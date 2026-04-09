@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>CloseFlow TC | Client Portal</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif}
+:root{
+  --steel:#4A7C8E;--dark:#2E5F70;--ink:#1C2B32;--slate:#6A9BAA;
+  --frost:#F2F6F8;--mist:#B8D4DC;--smoke:#8DA8B2;--bg:#EEF3F6;--white:#fff;
+  --grad-hero:linear-gradient(135deg,#1C2B32 0%,#2E5F70 55%,#4A7C8E 100%);
+  --grad-btn:linear-gradient(135deg,#4A7C8E 0%,#2E5F70 100%);
+  --grad-mist:linear-gradient(135deg,#F2F6F8 0%,#ddeaf0 100%);
+  --grad-dark:linear-gradient(160deg,#1C2B32 0%,#243840 100%);
+  --grad-sidebar:linear-gradient(180deg,#1a2f38 0%,#1f3a45 100%);
+  --shadow:0 4px 24px rgba(28,43,50,.13);
+}
+body{background:var(--bg);min-height:100vh}
+a{color:var(--steel);text-decoration:none}
+input,select{font-family:inherit;font-size:14px}
+button{font-family:inherit;cursor:pointer}
+
+.pbtn{background:var(--grad-btn);color:#fff;border:none;border-radius:10px;
+  padding:12px 24px;font-weight:700;font-size:15px;
+  box-shadow:0 3px 14px rgba(46,95,112,.4);letter-spacing:.02em;transition:opacity .2s}
+.pbtn:hover{opacity:.9}
+.pbtn.sm{padding:8px 18px;font-size:13px}
+
+.card{background:linear-gradient(145deg,#fff,var(--frost));border-radius:16px;
+  border:1px solid rgba(74,124,142,.12);box-shadow:var(--shadow);overflow:hidden}
+
+.slabel{font-size:12px;font-weight:700;color:var(--smoke);text-transform:uppercase;
+  letter-spacing:.08em;margin-bottom:10px;display:block}
+
+.finput{width:100%;padding:12px 16px;border-radius:10px;border:1.5px solid rgba(74,124,142,.2);
+  font-size:15px;outline:none;background:var(--frost);color:var(--ink);transition:border-color .2s}
+.finput:focus{border-color:var(--steel)}
+
+#app{display:none}
+#loading{display:flex;align-items:center;justify-content:center;min-height:100vh;
+  background:var(--grad-hero);color:#fff;font-size:16px;font-weight:600;letter-spacing:.05em}
+
+/* AUTH */
+.auth-wrap{display:flex;min-height:100vh}
+.auth-left{flex:0 0 46%;background:var(--grad-hero);display:flex;flex-direction:column;
+  justify-content:space-between;padding:48px 52px;position:relative;overflow:hidden}
+.auth-left::before{content:'';position:absolute;width:420px;height:420px;border-radius:50%;
+  background:rgba(255,255,255,.04);top:-80px;right:-100px}
+.auth-left::after{content:'';position:absolute;width:260px;height:260px;border-radius:50%;
+  background:rgba(255,255,255,.04);bottom:60px;left:-60px}
+.auth-right{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 32px}
+.auth-form{width:100%;max-width:400px}
+.auth-pill{display:inline-block;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);
+  border-radius:50px;padding:5px 14px;margin-bottom:28px}
+.auth-tabs{display:flex;border-radius:10px;overflow:hidden;border:1.5px solid rgba(74,124,142,.2);margin-bottom:24px}
+.auth-tabs button{flex:1;padding:10px 0;background:transparent;color:var(--smoke);
+  font-weight:700;font-size:12px;border:none;letter-spacing:.05em;text-transform:uppercase;transition:all .2s}
+.auth-tabs button.active{background:var(--grad-btn);color:#fff}
+.err{color:#b03030;font-size:12px;margin-bottom:12px;padding:8px 12px;
+  background:#fdf0f0;border-radius:8px;border:1px solid #f0cece}
+
+/* TOPNAV */
+.topnav{background:var(--grad-hero);box-shadow:0 4px 20px rgba(28,43,50,.2)}
+.topnav-inner{max-width:900px;margin:0 auto;padding:0 24px}
+.topnav-row{display:flex;align-items:center;justify-content:space-between;height:62px}
+.nav-tabs{display:flex;gap:0}
+.nav-tabs button{background:none;border:none;border-bottom:2.5px solid transparent;
+  color:rgba(255,255,255,.45);font-weight:400;font-size:13px;padding:10px 18px;
+  transition:all .15s;letter-spacing:.01em}
+.nav-tabs button.active{color:#fff;font-weight:700;border-bottom-color:#fff}
+
+/* ADMIN */
+.admin-wrap{display:flex;flex:1;min-height:calc(100vh - 56px)}
+.admin-sidebar{width:240px;flex-shrink:0;background:var(--grad-sidebar);
+  border-right:1px solid rgba(255,255,255,.06);padding:20px 0;overflow-y:auto}
+.admin-main{flex:1;overflow-y:auto;padding:28px}
+.sidebar-btn{width:100%;text-align:left;background:none;border:none;
+  border-left:3px solid transparent;padding:11px 18px;transition:all .15s}
+.sidebar-btn.active{background:rgba(74,124,142,.2);border-left-color:var(--steel)}
+.dark-input{padding:10px 14px;border-radius:10px;border:1.5px solid rgba(255,255,255,.12);
+  font-size:13px;outline:none;background:rgba(255,255,255,.07);color:#fff;width:100%;
+  box-sizing:border-box;font-family:inherit}
+.dark-card{background:rgba(255,255,255,.05);border-radius:16px;
+  border:1px solid rgba(255,255,255,.07);padding:24px}
+
+.badge{border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;
+  display:inline-flex;align-items:center;gap:6px;letter-spacing:.03em}
+.avatar{border-radius:50%;background:linear-gradient(135deg,#6AB5C8,#4A9DB5);
+  display:flex;align-items:center;justify-content:center;color:#fff;
+  font-weight:800;flex-shrink:0;box-shadow:0 2px 10px rgba(74,124,142,.35)}
+
+.progress-bar{background:rgba(74,124,142,.12);border-radius:50px;height:8px;overflow:hidden}
+.progress-fill{height:100%;background:var(--grad-progress);
+  border-radius:50px;transition:width .7s ease}
+
+.msg-bubble{border-radius:14px;padding:12px 16px;max-width:76%;font-size:15px;line-height:1.6}
+.msg-admin{background:var(--grad-hero);color:#fff;border-bottom-left-radius:4px;
+  box-shadow:0 3px 12px rgba(46,95,112,.25)}
+.msg-client{background:var(--grad-mist);color:var(--ink);border-bottom-right-radius:4px}
+.msg-client-dark{background:rgba(255,255,255,.12);color:#fff;border-bottom-left-radius:4px}
+.msg-admin-dark{background:var(--grad-btn);color:#fff;border-bottom-right-radius:4px;
+  box-shadow:0 3px 12px rgba(46,95,112,.35)}
+
+.stat-card{background:var(--grad-mist);border-radius:14px;padding:20px 22px;
+  border:1px solid rgba(74,124,142,.12);box-shadow:0 2px 10px rgba(74,124,142,.08)}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
+.signout-btn{background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);
+  border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 16px;font-size:13px;font-weight:600}
+</style>
+</head>
+<body>
+
+<div id="loading">Connecting to CloseFlow TC...</div>
+<div id="app"></div>
+
+<script>
+const SUPABASE_URL = "https://zlxydrczpjteskkxrmzs.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpseHlkcmN6cGp0ZXNra3hybXpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NTUzODMsImV4cCI6MjA5MTMzMTM4M30.m7Hf6aNyo6ZwhdHRv21-nMRBYhckIkVDPFtOzTBJKYE";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const INVITE_CODE = "FLOW2026";
+const ADMIN = {email:"admin@closeflowtc.com", password:"admin2026"};
+const MILESTONES = ["Deal Submitted","Title Ordered","Title Search Complete","Clear to Close","HUD Sent for Approval","Closing Scheduled","Closed"];
+const FILE_STATUSES = ["Active","Pending","On Hold","Closed"];
+const STATUS_COLORS = {
+  Active:   {bg:"linear-gradient(135deg,#d6eef5,#b8dce8)",text:"#2E5F70",dot:"#4A7C8E"},
+  Pending:  {bg:"linear-gradient(135deg,#f5eed6,#ecdbb8)",text:"#6b5200",dot:"#d4a020"},
+  "On Hold":{bg:"linear-gradient(135deg,#f5d6d6,#e8b8b8)",text:"#6b1a1a",dot:"#cc3333"},
+  Closed:   {bg:"linear-gradient(135deg,#d6e8f5,#b8cfe8)",text:"#1a3a6b",dot:"#2a6ec8"},
+};
+
+let SESSION = null;
+const app = document.getElementById("app");
+const loading = document.getElementById("loading");
+
+function show(html){ app.innerHTML = html; app.style.display="block"; loading.style.display="none"; }
+function qs(sel){ return document.querySelector(sel); }
+function on(sel,ev,fn){ const el=qs(sel); if(el) el.addEventListener(ev,fn); }
+
+function initials(name){ return name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(); }
+function avatarEl(name,size=38){
+  return `<div class="avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size*.34)}px">${initials(name)}</div>`;
+}
+function badgeEl(status){
+  const c=STATUS_COLORS[status]||{bg:"#eee",text:"#555",dot:"#aaa"};
+  return `<span class="badge" style="background:${c.bg};color:${c.text}">
+    <span style="width:5px;height:5px;border-radius:50%;background:${c.dot};display:inline-block"></span>${status}</span>`;
+}
+function logoEl(light=false){
+  const tc=light?"#fff":"#1C2B32";
+  const sub=light?"rgba(255,255,255,.5)":"#8DA8B2";
+  return `<div style="display:flex;align-items:center;gap:11px">
+    <img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png"
+      style="height:38px;width:auto;object-fit:contain" alt="CloseFlow TC"/>
+    <div>
+      <div style="font-size:15px;font-weight:800;color:${tc};letter-spacing:.06em;
+        text-transform:uppercase;line-height:1.1">CloseFlow TC</div>
+      <div style="font-size:8px;color:${sub};letter-spacing:.14em;
+        text-transform:uppercase;margin-top:2px;font-weight:500">Where Every Closing Flows</div>
+    </div>
+  </div>`;
+}
+
+// ── AUTH ──────────────────────────────────────────────────────────────────────
+function renderLogin(mode="login", err=""){
+  show(`
+  <div class="auth-wrap">
+    <div class="auth-left">
+      ${logoEl(true)}
+      <div style="z-index:1">
+        <div class="auth-pill"><span style="color:rgba(255,255,255,.7);font-size:11px;font-weight:700;letter-spacing:.08em">CLIENT PORTAL</span></div>
+        <h1 style="color:#fff;font-size:34px;font-weight:900;line-height:1.15;letter-spacing:-1.5px;margin-bottom:16px;max-width:320px">
+          Your transactions,<br><span style="color:#B8D4DC">all in one place.</span>
+        </h1>
+        <p style="color:rgba(255,255,255,.5);font-size:14px;line-height:1.7;max-width:300px">
+          Track your file, review documents, and stay in sync with your coordinator — every step of the way.
+        </p>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;z-index:1">
+        ${["D.M.","S.J.","A.V."].map((i,n)=>`<div class="avatar" style="width:32px;height:32px;font-size:11px;margin-left:${n>0?"-10px":"0"};border:2px solid rgba(255,255,255,.2)">${i}</div>`).join("")}
+        <span style="color:rgba(255,255,255,.45);font-size:12px;margin-left:4px">Your coordination team</span>
+      </div>
+    </div>
+    <div class="auth-right">
+      <div class="auth-form">
+        <h2 style="font-size:24px;font-weight:800;color:var(--ink);letter-spacing:-.5px;margin-bottom:4px">
+          ${mode==="login"?"Welcome back":"Create account"}
+        </h2>
+        <p style="font-size:13px;color:var(--smoke);margin-bottom:28px">
+          ${mode==="login"?"Sign in to access your client dashboard.":"Register with your coordinator's invite code."}
+        </p>
+        <div class="auth-tabs">
+          <button class="${mode==="login"?"active":""}" id="tab-login">Sign In</button>
+          <button class="${mode==="register"?"active":""}" id="tab-register">Register</button>
+        </div>
+        ${err?`<div class="err">${err}</div>`:""}
+        ${mode==="login"?`
+          <div style="margin-bottom:14px"><label class="slabel">Email</label>
+            <input class="finput" id="f-email" type="email" placeholder="your@email.com"/></div>
+          <div style="margin-bottom:14px"><label class="slabel">Password</label>
+            <input class="finput" id="f-pass" type="password" placeholder="••••••••"/></div>
+          <button class="pbtn" id="do-login" style="width:100%;padding:13px 0;font-size:15px;border-radius:12px">Sign In →</button>
+        `:`
+          <div style="margin-bottom:14px"><label class="slabel">Full Name</label>
+            <input class="finput" id="f-name" placeholder="Jane Smith"/></div>
+          <div style="margin-bottom:14px"><label class="slabel">Email</label>
+            <input class="finput" id="f-email" type="email" placeholder="your@email.com"/></div>
+          <div style="margin-bottom:14px"><label class="slabel">Password</label>
+            <input class="finput" id="f-pass" type="password" placeholder="Create a password"/></div>
+          <div style="margin-bottom:14px"><label class="slabel">Confirm Password</label>
+            <input class="finput" id="f-confirm" type="password" placeholder="Repeat password"/></div>
+          <div style="margin-bottom:14px"><label class="slabel">Invite Code</label>
+            <input class="finput" id="f-code" placeholder="Provided by your coordinator"/></div>
+          <button class="pbtn" id="do-register" style="width:100%;padding:13px 0;font-size:15px;border-radius:12px">Create Account →</button>
+        `}
+        <p style="font-size:11px;color:var(--smoke);text-align:center;margin-top:20px">
+          Need access? <a href="mailto:info@closeflowtc.com" style="color:var(--steel);font-weight:700">Contact your coordinator</a>
+        </p>
+      </div>
+    </div>
+  </div>`);
+
+  on("#tab-login","click",()=>renderLogin("login"));
+  on("#tab-register","click",()=>renderLogin("register"));
+  on("#do-login","click", doLogin);
+  on("#do-register","click", doRegister);
+  on("#f-pass","keydown",e=>{ if(e.key==="Enter"){ mode==="login"?doLogin():doRegister(); }});
+}
+
+async function doLogin(){
+  const email=qs("#f-email").value.trim();
+  const pass=qs("#f-pass").value;
+  if(email===ADMIN.email && pass===ADMIN.password){
+    SESSION={role:"admin"};
+    await renderAdmin();
+    return;
+  }
+  const {data,error}=await sb.from("clients").select("*").eq("email",email).eq("password",pass).single();
+  if(error||!data){ renderLogin("login","Incorrect email or password."); return; }
+  SESSION={role:"client",client:data};
+  await renderClient(data.id);
+}
+
+async function doRegister(){
+  const name=qs("#f-name").value.trim();
+  const email=qs("#f-email").value.trim();
+  const pass=qs("#f-pass").value;
+  const confirm=qs("#f-confirm").value;
+  const code=qs("#f-code").value.trim().toUpperCase();
+  if(!name||!email||!pass){ renderLogin("register","Please fill in all fields."); return; }
+  if(pass!==confirm){ renderLogin("register","Passwords don't match."); return; }
+  if(code!==INVITE_CODE){ renderLogin("register","Invalid invite code. Contact your coordinator."); return; }
+  const {data:exists}=await sb.from("clients").select("id").eq("email",email).single();
+  if(exists){ renderLogin("register","An account with this email already exists."); return; }
+  const {data:client,error}=await sb.from("clients").insert({name,email,password:pass}).select().single();
+  if(error){ renderLogin("register","Something went wrong. Please try again."); return; }
+  await sb.from("files").insert({client_id:client.id,address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"});
+  await sb.from("messages").insert({client_id:client.id,from_name:"CloseFlow TC",
+    text:`Welcome, ${name}! Your account is ready. Your coordinator will update your file shortly.`,
+    date:new Date().toISOString().slice(0,10),is_admin:true});
+  SESSION={role:"client",client};
+  await renderClient(client.id);
+}
+
+// ── CLIENT DASHBOARD ──────────────────────────────────────────────────────────
+async function renderClient(clientId, tab="overview"){
+  const [{data:client},{data:file},{data:docs},{data:msgs}] = await Promise.all([
+    sb.from("clients").select("*").eq("id",clientId).single(),
+    sb.from("files").select("*").eq("client_id",clientId).single(),
+    sb.from("documents").select("*").eq("client_id",clientId).order("created_at"),
+    sb.from("messages").select("*").eq("client_id",clientId).order("created_at"),
+  ]);
+  const f=file||{address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"};
+  const pct=Math.round(((f.milestone+1)/MILESTONES.length)*100);
+
+  const tabs=["overview","milestones","documents","messages"];
+  let tabContent="";
+
+  if(tab==="overview"){
+    tabContent=`
+    <div style="display:grid;gap:18px">
+      <div class="grid4">
+        ${[{l:"File Status",v:badgeEl(f.status),raw:true},{l:"Progress",v:`${pct}% Complete`},
+           {l:"Target Close",v:f.closing_date||"TBD"},{l:"Coordinator",v:f.coordinator}].map(c=>
+          `<div class="stat-card"><span class="slabel">${c.l}</span>
+           ${c.raw?c.v:`<p style="font-weight:700;font-size:15px;color:var(--ink)">${c.v}</p>`}</div>`
+        ).join("")}
+      </div>
+      <div class="card" style="padding:24px 28px">
+        <span class="slabel">Property</span>
+        <p style="font-weight:800;font-size:18px;color:var(--ink);letter-spacing:-.3px;margin-bottom:14px">
+          ${f.address||'<span style="color:var(--smoke);font-weight:400;font-size:14px">Address pending — your coordinator will update this shortly.</span>'}
+        </p>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;padding-top:14px;border-top:1px solid rgba(74,124,142,.1)">
+          <a href="tel:3305834443" style="color:var(--steel);font-weight:600;font-size:13px">📞 (330) 583-4443</a>
+          <a href="mailto:info@closeflowtc.com" style="color:var(--steel);font-weight:600;font-size:13px">✉ info@closeflowtc.com</a>
+        </div>
+      </div>
+      <div class="card" style="padding:24px 28px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <span class="slabel" style="margin-bottom:0">Closing Progress</span>
+          <span style="font-weight:900;font-size:22px;color:var(--steel);letter-spacing:-1px">${pct}%</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+          <div style="width:46px;height:46px;border-radius:12px;background:var(--grad-btn);
+            display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:17px;
+            flex-shrink:0;box-shadow:0 4px 12px rgba(46,95,112,.35)">${f.milestone+1}</div>
+          <div>
+            <p style="font-weight:700;font-size:15px;color:var(--ink)">${MILESTONES[f.milestone]}</p>
+            ${f.milestone<MILESTONES.length-1?`<p style="font-size:12px;color:var(--smoke);margin-top:2px">Next: ${MILESTONES[f.milestone+1]}</p>`:""}
+          </div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <p style="font-size:11px;color:var(--smoke);margin-top:8px">Step ${f.milestone+1} of ${MILESTONES.length}</p>
+      </div>
+    </div>`;
+  } else if(tab==="milestones"){
+    tabContent=`<div class="card" style="padding:28px">
+      <span class="slabel">Closing Milestones</span>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">
+        ${MILESTONES.map((m,i)=>{
+          const done=i<f.milestone,curr=i===f.milestone;
+          return `<div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px;
+            background:${curr?"linear-gradient(135deg,#F2F6F8,#ddeaf0)":"transparent"};
+            border:1.5px solid ${curr?"rgba(74,124,142,.25)":"transparent"}">
+            <div style="width:30px;height:30px;border-radius:9px;flex-shrink:0;
+              background:${done?"linear-gradient(135deg,#6A9BAA,#4A7C8E)":curr?"var(--grad-btn)":"rgba(74,124,142,.1)"};
+              color:${done||curr?"#fff":"rgba(74,124,142,.4)"};display:flex;align-items:center;justify-content:center;
+              font-weight:800;font-size:12px;box-shadow:${done||curr?"0 2px 8px rgba(74,124,142,.3)":"none"}">
+              ${done?"✓":i+1}</div>
+            <div style="flex:1">
+              <p style="font-weight:${curr?700:done?500:400};font-size:14px;
+                color:${done?"rgba(74,124,142,.6)":curr?"var(--ink)":"rgba(74,124,142,.4)"}">${m}</p>
+              ${curr?`<p style="font-size:11px;color:var(--steel);font-weight:700;margin-top:2px">You are here</p>`:""}
+            </div>
+            ${done?`<span style="font-size:11px;color:var(--slate);font-weight:600">Complete</span>`:""}
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`;
+  } else if(tab==="documents"){
+    tabContent=`<div class="card" style="padding:28px">
+      <span class="slabel">Your Documents</span>
+      ${!docs||docs.length===0
+        ?`<div style="text-align:center;padding:48px 20px;color:var(--smoke)">
+            <p style="font-size:36px;margin-bottom:10px">📂</p>
+            <p style="font-weight:600">No documents yet. Check back soon.</p></div>`
+        :`<div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+          ${docs.map(doc=>`
+            <a href="${doc.url}" target="_blank" style="display:flex;align-items:center;gap:14px;
+              background:linear-gradient(135deg,#F2F6F8,#ddeaf0);border-radius:12px;padding:14px 18px;
+              border:1px solid rgba(74,124,142,.12);text-decoration:none">
+              <div style="width:38px;height:38px;border-radius:10px;background:var(--grad-btn);
+                display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;
+                box-shadow:0 2px 8px rgba(74,124,142,.3)">📄</div>
+              <div style="flex:1">
+                <p style="font-weight:700;font-size:14px;color:var(--ink)">${doc.name}</p>
+                <p style="font-size:11px;color:var(--smoke);margin-top:2px">${doc.date}</p>
+              </div>
+              <span style="color:var(--steel);font-weight:700;font-size:13px">View →</span>
+            </a>`).join("")}
+        </div>`}
+    </div>`;
+  } else if(tab==="messages"){
+    tabContent=`<div class="card" style="padding:28px">
+      <span class="slabel">Messages</span>
+      <div id="msg-list" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;
+        gap:10px;margin-bottom:16px;margin-top:8px;padding-right:4px">
+        ${(msgs||[]).map(m=>`
+          <div style="display:flex;flex-direction:column;align-items:${m.is_admin?"flex-start":"flex-end"}">
+            <p style="font-size:10px;color:var(--smoke);margin-bottom:4px;font-weight:600">
+              ${m.from_name} · ${m.date}</p>
+            <div class="msg-bubble ${m.is_admin?"msg-admin":"msg-client"}">${m.text}</div>
+          </div>`).join("")}
+      </div>
+      <div style="display:flex;gap:8px">
+        <input class="finput" id="msg-input" placeholder="Type a message…" style="flex:1"/>
+        <button class="pbtn" id="send-msg" style="border-radius:12px">Send</button>
+      </div>
+    </div>`;
+  }
+
+  show(`
+  <div style="min-height:100vh;background:var(--bg)">
+    <div class="topnav">
+      <div class="topnav-inner">
+        <div class="topnav-row">
+          ${logoEl(true)}
+          <div style="display:flex;align-items:center;gap:12px">
+            ${avatarEl(client.name,32)}
+            <span style="color:rgba(255,255,255,.8);font-size:13px;font-weight:500">${client.name}</span>
+            <button class="signout-btn" id="signout">Sign Out</button>
+          </div>
+        </div>
+        <div class="nav-tabs">
+          ${tabs.map(t=>`<button class="${t===tab?"active":""}" data-tab="${t}">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+    <div style="max-width:900px;margin:0 auto;padding:28px 24px">${tabContent}</div>
+  </div>`);
+
+  document.querySelectorAll(".nav-tabs button").forEach(btn=>{
+    btn.addEventListener("click",()=>renderClient(clientId,btn.dataset.tab));
+  });
+  on("#signout","click",()=>{ SESSION=null; renderLogin(); });
+  on("#send-msg","click",async()=>{
+    const input=qs("#msg-input");
+    const text=input.value.trim();
+    if(!text)return;
+    await sb.from("messages").insert({client_id:clientId,from_name:client.name,
+      text,date:new Date().toISOString().slice(0,10),is_admin:false});
+    input.value="";
+    await renderClient(clientId,"messages");
+  });
+  on("#msg-input","keydown",async e=>{
+    if(e.key!=="Enter")return;
+    const text=e.target.value.trim();
+    if(!text)return;
+    await sb.from("messages").insert({client_id:clientId,from_name:client.name,
+      text,date:new Date().toISOString().slice(0,10),is_admin:false});
+    e.target.value="";
+    await renderClient(clientId,"messages");
+  });
+  const ml=qs("#msg-list");
+  if(ml) ml.scrollTop=ml.scrollHeight;
+}
+
+// ── ADMIN PANEL ───────────────────────────────────────────────────────────────
+async function renderAdmin(selId=null, tab="file", saved=false){
+  const {data:clients}=await sb.from("clients").select("*").order("created_at");
+  const activeId=selId||(clients&&clients[0]?.id)||null;
+  let client=null,file=null,docs=null,msgs=null;
+  if(activeId){
+    [{data:client},{data:file},{data:docs},{data:msgs}]=await Promise.all([
+      sb.from("clients").select("*").eq("id",activeId).single(),
+      sb.from("files").select("*").eq("client_id",activeId).single(),
+      sb.from("documents").select("*").eq("client_id",activeId).order("created_at"),
+      sb.from("messages").select("*").eq("client_id",activeId).order("created_at"),
+    ]);
+  }
+  const f=file||{address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"};
+
+  let tabContent="";
+  if(tab==="file"&&client){
+    tabContent=`<div class="dark-card">
+      ${[{l:"Property Address",k:"address",t:"text",ph:"123 Main St, City, State"},
+         {l:"Target Closing Date",k:"closing_date",t:"date",ph:""}].map(row=>`
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:10px;font-weight:800;color:rgba(255,255,255,.3);
+            margin-bottom:5px;text-transform:uppercase;letter-spacing:.08em">${row.l}</label>
+          <input class="dark-input" id="f-${row.k}" type="${row.t}" value="${f[row.k]||""}" placeholder="${row.ph}"/>
+        </div>`).join("")}
+      ${[{l:"File Status",k:"status",opts:FILE_STATUSES,parse:false},
+         {l:"Current Milestone",k:"milestone",opts:MILESTONES,parse:true}].map(row=>`
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:10px;font-weight:800;color:rgba(255,255,255,.3);
+            margin-bottom:5px;text-transform:uppercase;letter-spacing:.08em">${row.l}</label>
+          <select class="dark-input" id="f-${row.k}">
+            ${row.opts.map((o,i)=>`<option value="${row.parse?i:o}" ${(row.parse?f[row.k]===i:f[row.k]===o)?"selected":""}>${row.parse?`${i+1}. ${o}`:o}</option>`).join("")}
+          </select>
+        </div>`).join("")}
+      <button class="pbtn" id="save-file" style="border-radius:10px">Save Changes</button>
+      ${saved?`<span style="margin-left:12px;color:#6A9BAA;font-size:12px;font-weight:700">✓ Saved successfully</span>`:""}
+      <div style="margin-top:16px;background:rgba(74,124,142,.15);border-radius:10px;padding:10px 14px;
+        font-size:12px;color:#B8D4DC;border:1px solid rgba(74,124,142,.2)">
+        ✓ Changes reflect on the client dashboard immediately.
+      </div>
+    </div>`;
+  } else if(tab==="documents"&&client){
+    tabContent=`<div class="dark-card">
+      <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
+        <input class="dark-input" id="doc-name" placeholder="Document name" style="flex:1;min-width:130px"/>
+        <input class="dark-input" id="doc-url" placeholder="https://link-to-doc..." style="flex:2;min-width:180px"/>
+        <button class="pbtn sm" id="add-doc" style="border-radius:10px">+ Add</button>
+      </div>
+      ${!docs||docs.length===0
+        ?`<p style="color:rgba(255,255,255,.2);font-size:13px">No documents uploaded yet.</p>`
+        :docs.map(doc=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;
+            background:rgba(255,255,255,.06);border-radius:10px;border:1px solid rgba(255,255,255,.07)">
+            <span style="font-size:18px">📄</span>
+            <div style="flex:1">
+              <p style="font-weight:600;font-size:13px;color:#fff">${doc.name}</p>
+              <a href="${doc.url}" style="font-size:11px;color:#6A9BAA">${doc.url}</a>
+            </div>
+            <button data-docid="${doc.id}" class="del-doc" style="background:none;border:none;
+              color:rgba(255,80,80,.6);font-size:20px;padding:0 4px;cursor:pointer">×</button>
+          </div>`).join("")}
+    </div>`;
+  } else if(tab==="messages"&&client){
+    tabContent=`<div class="dark-card">
+      <div id="admin-msg-list" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;
+        gap:10px;margin-bottom:16px;padding-right:4px">
+        ${(msgs||[]).map(m=>`
+          <div style="display:flex;flex-direction:column;align-items:${m.is_admin?"flex-end":"flex-start"}">
+            <p style="font-size:10px;color:rgba(255,255,255,.25);margin-bottom:4px;font-weight:600">
+              ${m.from_name} · ${m.date}</p>
+            <div class="msg-bubble ${m.is_admin?"msg-admin-dark":"msg-client-dark"}">${m.text}</div>
+          </div>`).join("")}
+      </div>
+      <div style="display:flex;gap:8px">
+        <input class="dark-input" id="admin-msg-input" placeholder="Send a message to client…"
+          style="flex:1;padding:11px 14px;border-radius:12px;font-size:14px"/>
+        <button class="pbtn" id="admin-send" style="border-radius:12px">Send</button>
+      </div>
+    </div>`;
+  }
+
+  show(`
+  <div style="min-height:100vh;background:var(--grad-dark);display:flex;flex-direction:column">
+    <div style="background:rgba(0,0,0,.25);border-bottom:1px solid rgba(255,255,255,.07);
+      display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:12px">
+        ${logoEl(true)}
+        <span style="background:rgba(74,124,142,.3);color:#B8D4DC;font-size:10px;font-weight:800;
+          padding:3px 10px;border-radius:20px;letter-spacing:.08em;border:1px solid rgba(74,124,142,.3)">ADMIN</span>
+      </div>
+      <button class="signout-btn" id="admin-signout">Sign Out</button>
+    </div>
+    <div style="display:flex;flex:1;min-height:0">
+      <div class="admin-sidebar">
+        <p style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
+          color:rgba(255,255,255,.25);padding:0 18px 10px">Clients (${(clients||[]).length})</p>
+        ${!clients||clients.length===0
+          ?`<p style="padding:0 18px;font-size:13px;color:rgba(255,255,255,.25)">No clients yet.</p>`
+          :clients.map(c=>{
+            const sc=STATUS_COLORS[c.status]||{dot:"#aaa"};
+            return `<button class="sidebar-btn ${c.id===activeId?"active":""}" data-cid="${c.id}">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:7px;height:7px;border-radius:50%;background:${STATUS_COLORS["Pending"].dot};flex-shrink:0"></div>
+                <div>
+                  <p style="font-weight:600;font-size:13px;color:${c.id===activeId?"#fff":"rgba(255,255,255,.6)"}">${c.name}</p>
+                  <p style="font-size:11px;color:rgba(255,255,255,.28);margin-top:1px">${c.email}</p>
+                </div>
+              </div>
+            </button>`;
+          }).join("")}
+        <div style="margin:20px 14px 0;padding:14px;background:rgba(74,124,142,.15);
+          border-radius:12px;border:1px solid rgba(74,124,142,.25)">
+          <p style="font-size:10px;color:rgba(255,255,255,.35);font-weight:800;letter-spacing:.08em;margin-bottom:6px">INVITE CODE</p>
+          <p style="font-size:20px;font-weight:900;color:#fff;letter-spacing:3px">${INVITE_CODE}</p>
+          <p style="font-size:10px;color:rgba(255,255,255,.3);margin-top:4px">Share with new clients</p>
+        </div>
+      </div>
+      <div class="admin-main">
+        ${!client?`<p style="color:rgba(255,255,255,.25);font-size:14px">Select a client to manage.</p>`:`
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
+            ${avatarEl(client.name,46)}
+            <div>
+              <h2 style="font-weight:900;font-size:21px;color:#fff;letter-spacing:-.5px">${client.name}</h2>
+              <p style="font-size:13px;color:rgba(255,255,255,.4);margin-top:2px">${client.email}</p>
+            </div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+              ${badgeEl(f.status)}
+              ${saved?`<span style="background:rgba(74,124,142,.25);color:#B8D4DC;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;border:1px solid rgba(74,124,142,.3)">✓ Saved</span>`:""}
+            </div>
+          </div>
+          <div style="display:flex;gap:0;margin-bottom:22px;border-bottom:1px solid rgba(255,255,255,.07)">
+            ${["file","documents","messages"].map(t=>`
+              <button data-atab="${t}" style="background:none;border:none;
+                border-bottom:${t===tab?"2px solid #4A7C8E":"2px solid transparent"};
+                color:${t===tab?"#fff":"rgba(255,255,255,.35)"};font-weight:${t===tab?700:400};
+                font-size:13px;padding:8px 18px;cursor:pointer;text-transform:capitalize;transition:all .15s">
+                ${t}</button>`).join("")}
+          </div>
+          ${tabContent}
+        `}
+      </div>
+    </div>
+  </div>`);
+
+  on("#admin-signout","click",()=>{ SESSION=null; renderLogin(); });
+  document.querySelectorAll(".sidebar-btn[data-cid]").forEach(btn=>{
+    btn.addEventListener("click",()=>renderAdmin(btn.dataset.cid,"file"));
+  });
+  document.querySelectorAll("[data-atab]").forEach(btn=>{
+    btn.addEventListener("click",()=>renderAdmin(activeId,btn.dataset.atab));
+  });
+
+  on("#save-file","click",async()=>{
+    const addr=qs("#f-address")?.value||"";
+    const cd=qs("#f-closing_date")?.value||"";
+    const status=qs("#f-status")?.value||"Pending";
+    const milestone=parseInt(qs("#f-milestone")?.value||0);
+    await sb.from("files").update({address:addr,closing_date:cd,status,milestone}).eq("client_id",activeId);
+    await renderAdmin(activeId,"file",true);
+  });
+
+  on("#add-doc","click",async()=>{
+    const name=qs("#doc-name")?.value.trim();
+    const url=qs("#doc-url")?.value.trim();
+    if(!name||!url)return;
+    await sb.from("documents").insert({client_id:activeId,name,url,date:new Date().toISOString().slice(0,10)});
+    await renderAdmin(activeId,"documents");
+  });
+
+  document.querySelectorAll(".del-doc").forEach(btn=>{
+    btn.addEventListener("click",async()=>{
+      await sb.from("documents").delete().eq("id",btn.dataset.docid);
+      await renderAdmin(activeId,"documents");
+    });
+  });
+
+  on("#admin-send","click",async()=>{
+    const input=qs("#admin-msg-input");
+    const text=input?.value.trim();
+    if(!text)return;
+    await sb.from("messages").insert({client_id:activeId,from_name:"CloseFlow TC",
+      text,date:new Date().toISOString().slice(0,10),is_admin:true});
+    input.value="";
+    await renderAdmin(activeId,"messages");
+  });
+
+  on("#admin-msg-input","keydown",async e=>{
+    if(e.key!=="Enter")return;
+    const text=e.target.value.trim();
+    if(!text)return;
+    await sb.from("messages").insert({client_id:activeId,from_name:"CloseFlow TC",
+      text,date:new Date().toISOString().slice(0,10),is_admin:true});
+    e.target.value="";
+    await renderAdmin(activeId,"messages");
+  });
+
+  const ml=qs("#admin-msg-list");
+  if(ml) ml.scrollTop=ml.scrollHeight;
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+renderLogin();
+</script>
+</body>
+</html>
