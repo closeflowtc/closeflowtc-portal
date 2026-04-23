@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>CloseFlow TC | Client Portal</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Inter',system-ui,-apple-system,sans-serif}
@@ -238,43 +239,51 @@ input,select,textarea{font-family:inherit}
   border-radius:20px;padding:24px 28px;color:#fff;margin-bottom:24px;
   display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
 
-/* ── ADMIN DARK PANEL ── */
-.admin-panel{background:linear-gradient(160deg,#0f1e26 0%,#1a3040 100%);min-height:100vh}
-.admin-sidebar{width:220px;background:linear-gradient(180deg,#0a1820 0%,#142030 100%);
-  border-right:1px solid rgba(255,255,255,.06);position:fixed;top:0;left:0;height:100vh;
-  overflow-y:auto;display:flex;flex-direction:column;padding:20px 0}
-.admin-main{margin-left:220px;padding:28px;min-height:100vh;background:linear-gradient(160deg,#0f1e26 0%,#172838 100%)}
-.admin-topbar{height:56px;background:rgba(0,0,0,.25);border-bottom:1px solid rgba(255,255,255,.07);
-  display:flex;align-items:center;justify-content:space-between;padding:0 24px;
-  position:sticky;top:0;z-index:100}
-.admin-nav-item{display:flex;align-items:center;gap:10px;padding:9px 14px;
+/* ── ADMIN PANEL ── */
+.admin-panel{background:var(--main-bg);min-height:100vh}
+.admin-sidebar{width:240px;background:linear-gradient(180deg,#1C2B32 0%,#2D4A5A 100%);
+  border-right:none;position:fixed;top:0;left:0;height:100vh;
+  overflow-y:auto;display:flex;flex-direction:column;padding:0;
+  box-shadow:4px 0 24px rgba(28,43,50,.15)}
+.admin-sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+.admin-main{margin-left:240px;padding:28px;min-height:100vh;background:var(--main-bg)}
+.admin-topbar{height:64px;background:var(--white);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;padding:0 28px;
+  position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.05);
+  margin-left:240px}
+.admin-nav-section{padding:12px 12px 4px}
+.admin-nav-label{font-size:10px;font-weight:700;color:rgba(255,255,255,.3);
+  text-transform:uppercase;letter-spacing:.1em;padding:4px 8px 8px;display:block}
+.admin-nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;
   border-radius:10px;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);
   cursor:pointer;transition:all .2s;margin-bottom:2px;border:none;
   background:none;width:100%;text-align:left}
-.admin-nav-item:hover{background:rgba(255,255,255,.07);color:#fff}
-.admin-nav-item.active{background:rgba(58,157,181,.2);color:#fff;font-weight:700;
-  border-left:3px solid var(--teal)}
-.admin-card{background:rgba(255,255,255,.05);border-radius:16px;
-  border:1px solid rgba(255,255,255,.08);padding:24px}
-.admin-stat{background:rgba(255,255,255,.07);border-radius:14px;padding:18px 20px;
-  border:1px solid rgba(255,255,255,.1);transition:all .2s}
-.admin-stat:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.2);background:rgba(255,255,255,.1)}
-.admin-row{display:flex;align-items:center;gap:14px;padding:14px 16px;
-  border-radius:12px;margin-bottom:8px;background:rgba(255,255,255,.06);
-  border:1px solid rgba(255,255,255,.07);transition:all .2s;cursor:pointer}
-.admin-row:hover{background:rgba(58,157,181,.12);border-color:rgba(58,157,181,.25);transform:translateX(4px)}
-.dark-input{padding:10px 14px;border-radius:10px;border:1.5px solid rgba(255,255,255,.12);
-  font-size:13px;outline:none;background:rgba(255,255,255,.08);color:#fff;
+.admin-nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.admin-nav-item.active{background:rgba(58,157,181,.25);color:#fff;font-weight:700;
+  border-left:3px solid var(--teal);padding-left:9px}
+.admin-card{background:var(--white);border-radius:16px;
+  border:1px solid var(--border);padding:24px;box-shadow:var(--shadow)}
+.admin-stat{background:var(--white);border-radius:14px;padding:18px 20px;
+  border:1px solid var(--border);transition:all .2s;box-shadow:var(--shadow)}
+.admin-stat:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+.admin-row{display:flex;align-items:center;gap:14px;padding:12px 14px;
+  border-radius:12px;margin-bottom:8px;background:var(--main-bg);
+  border:1px solid var(--border);transition:all .2s;cursor:pointer}
+.admin-row:hover{background:var(--teal-mist);border-color:var(--teal-light);transform:translateX(4px)}
+.dark-input{padding:10px 14px;border-radius:10px;border:1.5px solid var(--border);
+  font-size:13px;outline:none;background:var(--main-bg);color:var(--ink);
   width:100%;box-sizing:border-box;font-family:inherit;transition:border-color .2s}
-.dark-input:focus{border-color:var(--teal)}
-.dark-input::placeholder{color:rgba(255,255,255,.3)}
+.dark-input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(58,157,181,.1)}
+.dark-input::placeholder{color:#A0AEC0}
 .admin-tab{background:none;border:none;border-bottom:2px solid transparent;
-  color:rgba(255,255,255,.4);font-weight:400;font-size:13px;padding:8px 16px;
+  color:var(--muted);font-weight:400;font-size:13px;padding:8px 16px;
   cursor:pointer;white-space:nowrap;transition:all .2s}
-.admin-tab:hover{color:rgba(255,255,255,.7)}
-.admin-tab.active{color:#fff;font-weight:700;border-bottom-color:var(--teal)}
-.admin-label{font-size:10px;font-weight:800;color:rgba(255,255,255,.35);
-  text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;display:block}
+.admin-tab:hover{color:var(--ink)}
+.admin-tab.active{color:var(--ink);font-weight:700;border-bottom-color:var(--teal)}
+.admin-label{font-size:10px;font-weight:800;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;display:block}
+.admin-section-card{background:var(--white);border-radius:16px;border:1px solid var(--border);
+  padding:22px;box-shadow:var(--shadow);margin-bottom:20px}
 </style>
 </head>
 <body>
@@ -284,6 +293,33 @@ input,select,textarea{font-family:inherit}
 const SB_URL="https://zlxydrczpjteskkxrmzs.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpseHlkcmN6cGp0ZXNra3hybXpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NTUzODMsImV4cCI6MjA5MTMzMTM4M30.m7Hf6aNyo6ZwhdHRv21-nMRBYhckIkVDPFtOzTBJKYE";
 const sb=supabase.createClient(SB_URL,SB_KEY);
+
+// EmailJS config
+const EJS_SERVICE="service_ncxuh88";
+const EJS_TEMPLATE="template_gfuunlk";
+const EJS_KEY="1lwiIwaud7k3acOaW";
+emailjs.init(EJS_KEY);
+
+// ── NOTIFY ALL ADMINS ─────────────────────────────────────────────────────────
+async function notifyAdmins(clientName, notificationType, details){
+  try {
+    const {data:admins}=await sb.from("admins").select("email,name");
+    if(!admins||admins.length===0)return;
+    const adminEmails=admins.map(a=>a.email).join(",");
+    await emailjs.send(EJS_SERVICE, EJS_TEMPLATE, {
+      admin_emails: adminEmails,
+      client_name: clientName,
+      notification_type: notificationType,
+      details: details,
+      timestamp: new Date().toLocaleString("en-US",{
+        month:"short",day:"numeric",year:"numeric",
+        hour:"numeric",minute:"2-digit",hour12:true
+      }),
+    });
+  } catch(err){
+    console.error("Email notification failed:",err);
+  }
+}
 const INVITE="FLOW2026";
 const MILESTONES=["Deal Submitted","Title Ordered","Title Search Complete","Clear to Close","HUD Sent for Approval","Closing Scheduled","Closed"];
 const FILE_STATUSES=["Active","Pending","On Hold","Closed"];
@@ -666,18 +702,63 @@ async function renderClient(clientId,tab="overview",isFirstLoad=false,isTourStep
   }
 
   else if(tab==="documents"){
-    const dl=docs||[];const cats=[...new Set(dl.map(d=>d.category||"General"))];
+    const dl=docs||[];
+    const tcDocs=dl.filter(d=>d.uploaded_by!=="client");
+    const clientDocs=dl.filter(d=>d.uploaded_by==="client");
+    const cats=[...new Set(tcDocs.map(d=>d.category||"General"))];
+
+    const docRow=(doc,isClient=false)=>`
+      <a href="${doc.url}" target="_blank" style="display:flex;align-items:center;gap:14px;background:var(--main-bg);border-radius:12px;padding:14px 16px;border:1px solid var(--border);text-decoration:none;margin-bottom:8px;transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow-hover)';this.style.borderColor='var(--teal-light)'" onmouseout="this.style.transform='none';this.style.boxShadow='none';this.style.borderColor='var(--border)'">
+        <div style="width:38px;height:38px;border-radius:10px;background:${isClient?"#FEFCBF":"var(--teal-mist)"};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;transition:transform .2s" onmouseover="this.style.transform='scale(1.1) rotate(-5deg)'" onmouseout="this.style.transform='scale(1)'">📄</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <p style="font-weight:700;font-size:14px;color:var(--ink)">${doc.name}</p>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${isClient?"#FEFCBF":"var(--teal-mist)"};color:${isClient?"#744210":"var(--teal-dark)"}">${isClient?"My Upload":"TC"}</span>
+          </div>
+          <p style="font-size:11px;color:var(--muted)">${doc.date}${doc.description?` · ${doc.description}`:""}</p>
+        </div>
+        <span style="color:var(--teal);font-weight:700;font-size:13px">View →</span>
+      </a>`;
+
     content=`<div class="card card-pad">
-      <p style="font-weight:700;font-size:16px;color:var(--ink);margin-bottom:16px">📁 Documents</p>
-      ${dl.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📂</p><p style="font-weight:600">No documents yet. Check back soon.</p></div>`
-      :cats.map(cat=>`
-        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px">${cat}</p>
-        ${dl.filter(d=>(d.category||"General")===cat).map(doc=>`
-          <a href="${doc.url}" target="_blank" style="display:flex;align-items:center;gap:14px;background:var(--main-bg);border-radius:12px;padding:14px 16px;border:1px solid var(--border);text-decoration:none;margin-bottom:8px;transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow-hover)';this.style.borderColor='var(--teal-light)'" onmouseout="this.style.transform='none';this.style.boxShadow='none';this.style.borderColor='var(--border)'">
-            <div style="width:38px;height:38px;border-radius:10px;background:var(--teal-mist);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;transition:transform .2s" onmouseover="this.style.transform='scale(1.1) rotate(-5deg)'" onmouseout="this.style.transform='scale(1)'">📄</div>
-            <div style="flex:1"><p style="font-weight:700;font-size:14px;color:var(--ink)">${doc.name}</p><p style="font-size:11px;color:var(--muted);margin-top:2px">${doc.date}</p></div>
-            <span style="color:var(--teal);font-weight:700;font-size:13px">View →</span>
-          </a>`).join("")}`).join("")}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <p style="font-weight:700;font-size:16px;color:var(--ink)">📁 Documents</p>
+        <button class="btn btn-teal btn-sm" id="show-upload-form" style="border-radius:8px">+ Upload Document</button>
+      </div>
+      <!-- Upload Form (hidden by default) -->
+      <div id="upload-form" style="display:none;background:var(--teal-mist);border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid var(--teal-light)">
+        <p style="font-weight:700;font-size:13px;color:var(--ink);margin-bottom:12px">Add a Document</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="input-group" style="margin-bottom:0"><label class="input-label">Document Name</label><input class="finput" id="cdoc-name" placeholder="e.g. Purchase Agreement"/></div>
+          <div class="input-group" style="margin-bottom:0"><label class="input-label">Category</label>
+            <select class="finput" id="cdoc-cat">
+              <option>Business Documents</option>
+              <option>ID / Verification</option>
+              <option>Financial</option>
+              <option>Contracts</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-group" style="margin-bottom:10px"><label class="input-label">Google Drive Link</label><input class="finput" id="cdoc-url" placeholder="Paste your Google Drive shareable link here"/></div>
+        <div class="input-group" style="margin-bottom:12px"><label class="input-label">Description (optional)</label><input class="finput" id="cdoc-desc" placeholder="Brief description of this document"/></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-teal btn-sm" id="submit-cdoc">Submit Document</button>
+          <button class="btn btn-ghost btn-sm" id="cancel-upload">Cancel</button>
+        </div>
+        <div id="cdoc-msg" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;border-radius:8px"></div>
+      </div>
+      <!-- TC Documents -->
+      ${tcDocs.length===0&&clientDocs.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📂</p><p style="font-weight:600">No documents yet. Check back soon.</p></div>`:""}
+      ${tcDocs.length>0?`
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">From Your Coordinator</p>
+        ${cats.map(cat=>`
+          <p style="font-size:11px;font-weight:600;color:var(--muted);margin:10px 0 6px;padding-left:4px">${cat}</p>
+          ${tcDocs.filter(d=>(d.category||"General")===cat).map(doc=>docRow(doc,false)).join("")}`).join("")}`:""}
+      <!-- Client Uploaded Documents -->
+      ${clientDocs.length>0?`
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px">My Uploads</p>
+        ${clientDocs.map(doc=>docRow(doc,true)).join("")}`:""}
     </div>`;
   }
 
@@ -792,13 +873,60 @@ async function renderClient(clientId,tab="overview",isFirstLoad=false,isTourStep
     if(ctx){new Chart(ctx,{type:"doughnut",data:{datasets:[{data:[f.milestone,1,MILESTONES.length-f.milestone-1],backgroundColor:["#3A9DB5","#2D3748","#E2E8F0"],borderWidth:0,hoverOffset:4}]},options:{cutout:"72%",plugins:{legend:{display:false}},animation:{animateScale:true}}});}
   }
 
-  on("#send-msg","click",async()=>{const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});input.value="";await renderClient(clientId,"messages");});
-  on("#msg-input","keydown",async e=>{if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});e.target.value="";await renderClient(clientId,"messages");});
+  on("#send-msg","click",async()=>{
+    const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;
+    await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});
+    await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}${text.length>120?"...":""}"`);
+    input.value="";await renderClient(clientId,"messages");
+  });
+  on("#msg-input","keydown",async e=>{
+    if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;
+    await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});
+    await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}${text.length>120?"...":""}"`);
+    e.target.value="";await renderClient(clientId,"messages");
+  });
   qsa(".task-check").forEach(el=>{el.addEventListener("click",async()=>{const tid=el.dataset.tid;const done=el.dataset.done==="true";await sb.from("tasks").update({done:!done}).eq("id",tid);await renderClient(clientId,"tasks");});});
-  on("#save-acc","click",async()=>{const name=qs("#acc-name")?.value.trim();const phone=qs("#acc-phone")?.value.trim();const address=qs("#acc-address")?.value.trim();const email=qs("#acc-email")?.value.trim();await sb.from("clients").update({name,phone,address,email}).eq("id",clientId);const msg=qs("#acc-msg");if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Profile saved!";}SESSION.client={...SESSION.client,name,phone,address,email};});
+  on("#save-acc","click",async()=>{
+    const name=qs("#acc-name")?.value.trim();const phone=qs("#acc-phone")?.value.trim();
+    const address=qs("#acc-address")?.value.trim();const email=qs("#acc-email")?.value.trim();
+    await sb.from("clients").update({name,phone,address,email}).eq("id",clientId);
+    await notifyAdmins(client.name,"👤 Profile Updated",`Updated fields — Name: ${name} | Phone: ${phone||"—"} | Email: ${email} | Address: ${address||"—"}`);
+    const msg=qs("#acc-msg");if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Profile saved!";}
+    SESSION.client={...SESSION.client,name,phone,address,email};
+  });
   on("#save-pw","click",async()=>{const curr=qs("#pw-current")?.value;const nw=qs("#pw-new")?.value;const conf=qs("#pw-confirm")?.value;const msg=qs("#pw-msg");if(!curr||!nw||!conf){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in all fields.";}return;}if(curr!==client.password){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Current password is incorrect.";}return;}if(nw!==conf){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Passwords don't match.";}return;}await sb.from("clients").update({password:nw}).eq("id",clientId);if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Password updated!";}SESSION.client={...SESSION.client,password:nw};});
   on("#photo-file","change",async e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async ev=>{await sb.from("clients").update({photo_url:ev.target.result}).eq("id",clientId);await renderClient(clientId,"account");};reader.readAsDataURL(file);});
-  on("#restart-tour","click",()=>startTour(clientId,renderClient));
+  on("#show-upload-form","click",()=>{
+    const f=qs("#upload-form");if(f)f.style.display="block";
+    const b=qs("#show-upload-form");if(b)b.style.display="none";
+  });
+  on("#cancel-upload","click",()=>{
+    const f=qs("#upload-form");if(f)f.style.display="none";
+    const b=qs("#show-upload-form");if(b)b.style.display="block";
+  });
+  on("#submit-cdoc","click",async()=>{
+    const name=qs("#cdoc-name")?.value.trim();
+    const url=qs("#cdoc-url")?.value.trim();
+    const category=qs("#cdoc-cat")?.value||"Other";
+    const description=qs("#cdoc-desc")?.value.trim()||"";
+    const msg=qs("#cdoc-msg");
+    if(!name||!url){
+      if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in the document name and link.";}
+      return;
+    }
+    if(!url.includes("drive.google.com")&&!url.includes("docs.google.com")&&!url.startsWith("http")){
+      if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please paste a valid Google Drive link.";}
+      return;
+    }
+    await sb.from("documents").insert({
+      client_id:clientId,name,url,category,description,
+      date:new Date().toISOString().slice(0,10),
+      uploaded_by:"client"
+    });
+    await notifyAdmins(client.name,"📄 New Document Upload",`Document: "${name}" | Category: ${category}${description?` | Note: ${description}`:""}`);
+    if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Document submitted! Your coordinator has been notified.";}
+    setTimeout(()=>renderClient(clientId,"documents"),1200);
+  });
 
   if(isFirstLoad&&client&&!client.has_seen_welcome){
     showWelcomeModal(client.name,clientId,()=>{},()=>startTour(clientId,renderClient));
@@ -840,105 +968,336 @@ async function renderAdmin(selId=null,tab="overview"){
   let mainContent="";
 
   if(tab==="overview"){
+    const active=allClients.length;
+    const closed=allClients.filter(c=>c.status==="Closed").length;
+    const pending=allClients.filter(c=>c.status==="Pending").length;
+    const onHold=allClients.filter(c=>c.status==="On Hold").length;
     mainContent=`
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:24px">
-        ${[
-          {icon:"👥",val:allClients.length,label:"Total Clients"},
-          {icon:"📁",val:allClients.length,label:"Active Files"},
-          {icon:"🧑‍💼",val:(admins||[]).length,label:"Team Members"},
-          {icon:"🔑",val:INVITE,label:"Invite Code"},
-        ].map(s=>`<div class="admin-stat">
-          <div style="font-size:26px;margin-bottom:8px;transition:transform .2s" onmouseover="this.style.transform='scale(1.2) rotate(-5deg)'" onmouseout="this.style.transform='scale(1)'">${s.icon}</div>
-          <p style="font-size:22px;font-weight:900;color:#fff">${s.val}</p>
-          <p style="font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-top:3px">${s.label}</p>
-        </div>`).join("")}
-      </div>
-      <div class="admin-card">
-        <p class="admin-label" style="margin-bottom:14px">All Clients</p>
-        ${allClients.length===0?`<p style="color:rgba(255,255,255,.3)">No clients yet.</p>`
-        :allClients.map(c=>`<div class="admin-row client-row" data-cid="${c.id}">
-          ${avatarEl(c.name,c.photo_url||"",38)}
-          <div style="flex:1">
-            <p style="font-weight:700;font-size:14px;color:#fff">${c.name}</p>
-            <p style="font-size:12px;color:rgba(255,255,255,.4);margin-top:1px">${c.email}${c.phone?` · ${c.phone}`:""}</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px">
+      ${[
+        {icon:"👥",val:allClients.length,label:"Total Clients",color:"#EBF8FF",icolor:"#3182CE",trend:"+2 this month"},
+        {icon:"📁",val:active,label:"Active Files",color:"#F0FFF4",icolor:"#38A169",trend:"All in progress"},
+        {icon:"✅",val:closed,label:"Closed Files",color:"#FEFCBF",icolor:"#D69E2E",trend:"This quarter"},
+        {icon:"🧑‍💼",val:(admins||[]).length,label:"Team Members",color:"#FAF5FF",icolor:"#805AD5",trend:"Coordinators"},
+      ].map(s=>`
+        <div class="admin-stat">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="width:42px;height:42px;border-radius:12px;background:${s.color};display:flex;align-items:center;justify-content:center;font-size:20px;transition:transform .25s cubic-bezier(.34,1.56,.64,1)" onmouseover="this.style.transform='scale(1.15) rotate(-5deg)'" onmouseout="this.style.transform='scale(1)'">${s.icon}</div>
+            <span style="font-size:11px;color:${s.icolor};font-weight:600;background:${s.color};padding:3px 8px;border-radius:20px">${s.trend}</span>
           </div>
-          ${badgeEl(c.status||"Pending")}
-          <span style="font-size:12px;color:rgba(255,255,255,.3)">View →</span>
+          <p style="font-size:28px;font-weight:900;color:var(--ink);line-height:1">${s.val}</p>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">${s.label}</p>
         </div>`).join("")}
-      </div>`;
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;margin-bottom:24px">
+      <div class="admin-section-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+          <div>
+            <p style="font-weight:800;font-size:16px;color:var(--ink)">File Pipeline</p>
+            <p style="font-size:12px;color:var(--muted);margin-top:2px">Status breakdown across all active files</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:12px;height:140px;padding-bottom:8px">
+          ${[
+            {label:"Active",val:active,max:Math.max(active,closed,pending,onHold,1),color:"#3A9DB5"},
+            {label:"Pending",val:pending,max:Math.max(active,closed,pending,onHold,1),color:"#D69E2E"},
+            {label:"On Hold",val:onHold,max:Math.max(active,closed,pending,onHold,1),color:"#E53E3E"},
+            {label:"Closed",val:closed,max:Math.max(active,closed,pending,onHold,1),color:"#38A169"},
+          ].map(b=>{
+            const h=b.max>0?Math.max(Math.round((b.val/b.max)*120),8):8;
+            return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
+              <p style="font-size:13px;font-weight:800;color:var(--ink)">${b.val}</p>
+              <div style="width:100%;height:${h}px;background:${b.color};border-radius:8px 8px 0 0;transition:height .6s;opacity:.85;cursor:pointer" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.85'" title="${b.label}: ${b.val}"></div>
+              <p style="font-size:11px;color:var(--muted);font-weight:600">${b.label}</p>
+            </div>`;
+          }).join("")}
+        </div>
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Milestone Distribution</p>
+          <div style="display:flex;height:8px;border-radius:50px;overflow:hidden;gap:1px">
+            ${MILESTONES.map((_,i)=>{const colors=["#BEE3F8","#90CDF4","#63B3ED","#4299E1","#3182CE","#2B6CB0","#2C5282"];return`<div style="flex:1;background:${colors[i]}" title="Step ${i+1}"></div>`;}).join("")}
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px">
+            <span style="font-size:10px;color:var(--muted)">Deal Submitted</span>
+            <span style="font-size:10px;color:var(--muted)">Closed</span>
+          </div>
+        </div>
+      </div>
+      <div class="admin-section-card" style="display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <p style="font-weight:800;font-size:16px;color:var(--ink)">Status Overview</p>
+        </div>
+        <div style="position:relative;width:130px;height:130px;margin:0 auto 16px">
+          <canvas id="admin-donut"></canvas>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+            <p style="font-size:26px;font-weight:900;color:var(--ink)">${allClients.length}</p>
+            <p style="font-size:11px;color:var(--muted)">Total</p>
+          </div>
+        </div>
+        ${[
+          {label:"Active",val:active,color:"#3A9DB5"},
+          {label:"Pending",val:pending,color:"#D69E2E"},
+          {label:"On Hold",val:onHold,color:"#E53E3E"},
+          {label:"Closed",val:closed,color:"#38A169"},
+        ].map(r=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:10px;height:10px;border-radius:50%;background:${r.color}"></div>
+              <span style="font-size:13px;color:var(--muted)">${r.label}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:60px;height:6px;background:var(--border);border-radius:50px;overflow:hidden">
+                <div style="width:${allClients.length>0?Math.round((r.val/allClients.length)*100):0}%;height:100%;background:${r.color};border-radius:50px"></div>
+              </div>
+              <span style="font-size:13px;font-weight:700;color:var(--ink);min-width:16px;text-align:right">${r.val}</span>
+            </div>
+          </div>`).join("")}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 300px;gap:20px">
+      <div class="admin-section-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <p style="font-weight:800;font-size:16px;color:var(--ink)">All Clients</p>
+          <span style="font-size:12px;color:var(--teal);font-weight:600">${allClients.length} total</span>
+        </div>
+        ${allClients.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">👥</p><p>No clients yet.</p></div>`
+        :allClients.map(c=>`
+          <div class="admin-row client-row" data-cid="${c.id}">
+            ${avatarEl(c.name,c.photo_url||"",40)}
+            <div style="flex:1;min-width:0">
+              <p style="font-weight:700;font-size:14px;color:var(--ink)">${c.name}</p>
+              <p style="font-size:12px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.email}${c.phone?` · ${c.phone}`:""}</p>
+            </div>
+            ${badgeEl(c.status||"Pending")}
+            <span style="font-size:20px;color:var(--teal);font-weight:300">›</span>
+          </div>`).join("")}
+      </div>
+      <div class="admin-section-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <p style="font-weight:800;font-size:16px;color:var(--ink)">Team</p>
+          ${isSuperAdmin?`<button data-nav="team" class="btn btn-ghost btn-sm">Manage →</button>`:""}
+        </div>
+        ${(admins||[]).map(a=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+            ${avatarEl(a.name,"",36)}
+            <div style="flex:1;min-width:0">
+              <p style="font-weight:700;font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</p>
+              <p style="font-size:11px;color:var(--muted)">${a.role==="superadmin"?"⭐ Super Admin":"👤 Admin"}</p>
+            </div>
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--success)"></div>
+          </div>`).join("")}
+        <div style="margin-top:16px;background:linear-gradient(135deg,var(--sidebar-active),#2D4A5A);border-radius:12px;padding:16px;text-align:center">
+          <p style="font-size:10px;color:rgba(255,255,255,.5);font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Client Invite Code</p>
+          <p style="font-size:22px;font-weight:900;color:#fff;letter-spacing:4px">${INVITE}</p>
+        </div>
+      </div>
+    </div>`;
+    <!-- Top Stats Row -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px">
+      ${[
+        {icon:"👥",val:allClients.length,label:"Total Clients",color:"#EBF8FF",icolor:"#3182CE",trend:"+2 this month"},
+        {icon:"📁",val:active,label:"Active Files",color:"#F0FFF4",icolor:"#38A169",trend:"All in progress"},
+        {icon:"✅",val:closed,label:"Closed Files",color:"#FEFCBF",icolor:"#D69E2E",trend:"This quarter"},
+        {icon:"🧑‍💼",val:(admins||[]).length,label:"Team Members",color:"#FAF5FF",icolor:"#805AD5",trend:"Coordinators"},
+      ].map(s=>`
+        <div style="background:var(--white);border-radius:16px;border:1px solid var(--border);padding:18px 20px;box-shadow:var(--shadow);transition:all .2s;cursor:default" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--shadow-hover)'" onmouseout="this.style.transform='none';this.style.boxShadow='var(--shadow)'">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="width:42px;height:42px;border-radius:12px;background:${s.color};display:flex;align-items:center;justify-content:center;font-size:20px;transition:transform .25s cubic-bezier(.34,1.56,.64,1)" onmouseover="this.style.transform='scale(1.15) rotate(-5deg)'" onmouseout="this.style.transform='scale(1)'">${s.icon}</div>
+            <span style="font-size:11px;color:${s.icolor};font-weight:600;background:${s.color};padding:3px 8px;border-radius:20px">${s.trend}</span>
+          </div>
+          <p style="font-size:28px;font-weight:900;color:var(--ink);line-height:1">${s.val}</p>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">${s.label}</p>
+        </div>`).join("")}
+    </div>
+
+    <!-- Middle Row: File Pipeline + Quick Stats -->
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;margin-bottom:24px">
+      <!-- File Pipeline Chart -->
+      <div style="background:var(--white);border-radius:16px;border:1px solid var(--border);padding:22px;box-shadow:var(--shadow)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+          <div>
+            <p style="font-weight:800;font-size:16px;color:var(--ink)">File Pipeline</p>
+            <p style="font-size:12px;color:var(--muted);margin-top:2px">Status breakdown across all active files</p>
+          </div>
+          <select style="border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--muted);outline:none;background:var(--main-bg)">
+            <option>All Time</option><option>This Month</option><option>This Week</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:12px;height:140px;padding-bottom:8px">
+          ${[
+            {label:"Active",val:active,max:Math.max(active,closed,pending,onHold,1),color:"#3A9DB5"},
+            {label:"Pending",val:pending,max:Math.max(active,closed,pending,onHold,1),color:"#D69E2E"},
+            {label:"On Hold",val:onHold,max:Math.max(active,closed,pending,onHold,1),color:"#E53E3E"},
+            {label:"Closed",val:closed,max:Math.max(active,closed,pending,onHold,1),color:"#38A169"},
+          ].map(b=>{
+            const h=b.max>0?Math.max(Math.round((b.val/b.max)*120),8):8;
+            return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
+              <p style="font-size:13px;font-weight:800;color:var(--ink)">${b.val}</p>
+              <div style="width:100%;height:${h}px;background:${b.color};border-radius:8px 8px 0 0;transition:height .6s cubic-bezier(.4,0,.2,1);cursor:pointer" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'" title="${b.label}: ${b.val}"></div>
+              <p style="font-size:11px;color:var(--muted);font-weight:600">${b.label}</p>
+            </div>`;
+          }).join("")}
+        </div>
+        <!-- Mini milestone breakdown -->
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Milestone Distribution</p>
+          <div style="display:flex;height:8px;border-radius:50px;overflow:hidden;gap:1px">
+            ${MILESTONES.map((_,i)=>{
+              const cnt=allClients.length>0?Math.round(allClients.length/MILESTONES.length)||1:1;
+              const colors=["#BEE3F8","#90CDF4","#63B3ED","#4299E1","#3182CE","#2B6CB0","#2C5282"];
+              return`<div style="flex:${cnt};background:${colors[i]};transition:flex .4s" title="Step ${i+1}"></div>`;
+            }).join("")}
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px">
+            <span style="font-size:10px;color:var(--muted)">Deal Submitted</span>
+            <span style="font-size:10px;color:var(--muted)">Closed</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel: File Status Overview -->
+      <div style="background:var(--white);border-radius:16px;border:1px solid var(--border);padding:22px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <p style="font-weight:800;font-size:16px;color:var(--ink)">Status Overview</p>
+          <span style="font-size:12px;color:var(--teal);font-weight:600;cursor:pointer">See All →</span>
+        </div>
+        <!-- Donut -->
+        <div style="position:relative;width:130px;height:130px;margin:0 auto 16px">
+          <canvas id="admin-donut"></canvas>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+            <p style="font-size:26px;font-weight:900;color:var(--ink)">${allClients.length}</p>
+            <p style="font-size:11px;color:var(--muted)">Total</p>
+          </div>
+        </div>
+        <!-- Legend -->
+        ${[
+          {label:"Active",val:active,color:"#3A9DB5"},
+          {label:"Pending",val:pending,color:"#D69E2E"},
+          {label:"On Hold",val:onHold,color:"#E53E3E"},
+          {label:"Closed",val:closed,color:"#38A169"},
+        ].map(r=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:10px;height:10px;border-radius:50%;background:${r.color}"></div>
+              <span style="font-size:13px;color:var(--muted)">${r.label}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:60px;height:6px;background:var(--border);border-radius:50px;overflow:hidden">
+                <div style="width:${allClients.length>0?Math.round((r.val/allClients.length)*100):0}%;height:100%;background:${r.color};border-radius:50px"></div>
+              </div>
+              <span style="font-size:13px;font-weight:700;color:var(--ink);min-width:16px;text-align:right">${r.val}</span>
+            </div>
+          </div>`).join("")}
+      </div>
+    </div>
+
+    <!-- Bottom Row: Client List + Team -->
+    <div style="display:grid;grid-template-columns:1fr 300px;gap:20px">
+      <!-- Recent Clients -->
+      <div style="background:var(--white);border-radius:16px;border:1px solid var(--border);padding:22px;box-shadow:var(--shadow)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <p style="font-weight:800;font-size:16px;color:var(--ink)">All Clients</p>
+          <span style="font-size:12px;color:var(--teal);font-weight:600">${allClients.length} total</span>
+        </div>
+        ${allClients.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">👥</p><p>No clients yet.</p></div>`
+        :allClients.map(c=>`
+          <div class="client-row" data-cid="${c.id}" style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px;margin-bottom:6px;cursor:pointer;transition:all .2s;border:1px solid transparent" onmouseover="this.style.background='var(--main-bg)';this.style.borderColor='var(--border)';this.style.transform='translateX(4px)'" onmouseout="this.style.background='transparent';this.style.borderColor='transparent';this.style.transform='none'">
+            ${avatarEl(c.name,c.photo_url||"",40)}
+            <div style="flex:1;min-width:0">
+              <p style="font-weight:700;font-size:14px;color:var(--ink)">${c.name}</p>
+              <p style="font-size:12px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.email}${c.phone?` · ${c.phone}`:""}</p>
+            </div>
+            ${badgeEl(c.status||"Pending")}
+            <span style="font-size:20px;color:var(--teal);font-weight:300">›</span>
+          </div>`).join("")}
+      </div>
+
+      <!-- Team Panel -->
+      <div style="background:var(--white);border-radius:16px;border:1px solid var(--border);padding:22px;box-shadow:var(--shadow)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <p style="font-weight:800;font-size:16px;color:var(--ink)">Team</p>
+          ${isSuperAdmin?`<button data-nav="team" class="btn btn-ghost btn-sm">Manage →</button>`:""}
+        </div>
+        ${(admins||[]).map(a=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+            ${avatarEl(a.name,"",36)}
+            <div style="flex:1;min-width:0">
+              <p style="font-weight:700;font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</p>
+              <p style="font-size:11px;color:var(--muted)">${a.role==="superadmin"?"⭐ Super Admin":"👤 Admin"}</p>
+            </div>
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--success)"></div>
+          </div>`).join("")}
+        <!-- Invite Code Card -->
+        <div style="margin-top:16px;background:linear-gradient(135deg,var(--sidebar-active),#2D4A5A);border-radius:12px;padding:16px;text-align:center">
+          <p style="font-size:10px;color:rgba(255,255,255,.5);font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Client Invite Code</p>
+          <p style="font-size:22px;font-weight:900;color:#fff;letter-spacing:4px">${INVITE}</p>
+          <p style="font-size:10px;color:rgba(255,255,255,.4);margin-top:4px">Share with new clients</p>
+        </div>
+      </div>
+    </div>`;
   }
 
   else if(tab==="team"){
     mainContent=`<div class="admin-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-        <p class="admin-label" style="margin-bottom:0">Team Members</p>
-        <span style="font-size:11px;color:rgba(255,255,255,.3)">${isSuperAdmin?"Super Admin only":"View only"}</span>
+        <p style="font-weight:800;font-size:16px;color:var(--ink)">Team Members</p>
+        <span style="font-size:11px;color:var(--muted)">${isSuperAdmin?"Super Admins can add/remove":"View only"}</span>
       </div>
-      ${(admins||[]).map(a=>`<div class="admin-row" style="cursor:default">
-        ${avatarEl(a.name,"",40)}
-        <div style="flex:1">
-          <p style="font-weight:700;font-size:14px;color:#fff">${a.name} ${a.id===currentAdmin?.id?`<span style="font-size:11px;color:rgba(255,255,255,.3)">(you)</span>`:""}</p>
-          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-top:1px">${a.email}</p>
-        </div>
-        ${isSuperAdmin&&a.id!==currentAdmin?.id?`
-          <select data-aid="${a.id}" class="role-select dark-input" style="width:auto;padding:6px 10px;font-size:12px">
-            <option value="admin" ${a.role==="admin"?"selected":""}>👤 Admin</option>
-            <option value="superadmin" ${a.role==="superadmin"?"selected":""}>⭐ Super Admin</option>
-          </select>
-          <button data-aid="${a.id}" class="del-admin btn btn-danger btn-sm">Remove</button>
-        `:roleBadge(a.role)}
-      </div>`).join("")}
-      ${isSuperAdmin?`
-        <div style="margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,.08)">
-          <p class="admin-label" style="margin-bottom:14px">Add New Team Member</p>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-            <input class="dark-input" id="new-admin-name" placeholder="Full Name"/>
-            <input class="dark-input" id="new-admin-email" type="email" placeholder="Email"/>
-            <input class="dark-input" id="new-admin-pass" type="password" placeholder="Password"/>
-            <select class="dark-input" id="new-admin-role">
-              <option value="admin">👤 Admin</option>
-              <option value="superadmin">⭐ Super Admin</option>
+      ${(admins||[]).map(a=>`
+        <div class="admin-row" style="cursor:default">
+          ${avatarEl(a.name,"",40)}
+          <div style="flex:1">
+            <p style="font-weight:700;font-size:14px;color:var(--ink)">${a.name} ${a.id===currentAdmin?.id?`<span style="font-size:11px;color:var(--muted)">(you)</span>`:""}</p>
+            <p style="font-size:12px;color:var(--muted);margin-top:1px">${a.email}</p>
+          </div>
+          ${isSuperAdmin&&a.id!==currentAdmin?.id?`
+            <select data-aid="${a.id}" class="role-select dark-input" style="width:auto;padding:6px 10px;font-size:12px">
+              <option value="admin" ${a.role==="admin"?"selected":""}>👤 Admin</option>
+              <option value="superadmin" ${a.role==="superadmin"?"selected":""}>⭐ Super Admin</option>
             </select>
+            <button data-aid="${a.id}" class="del-admin btn btn-danger btn-sm">Remove</button>
+          `:roleBadge(a.role)}
+        </div>`).join("")}
+      ${isSuperAdmin?`
+        <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+          <p style="font-weight:700;font-size:14px;color:var(--ink);margin-bottom:16px">Add New Team Member</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div class="input-group" style="margin-bottom:0"><label class="input-label">Full Name</label><input class="dark-input" id="new-admin-name" placeholder="Full Name"/></div>
+            <div class="input-group" style="margin-bottom:0"><label class="input-label">Email</label><input class="dark-input" id="new-admin-email" type="email" placeholder="Email"/></div>
+            <div class="input-group" style="margin-bottom:0"><label class="input-label">Password</label><input class="dark-input" id="new-admin-pass" type="password" placeholder="Password"/></div>
+            <div class="input-group" style="margin-bottom:0"><label class="input-label">Role</label>
+              <select class="dark-input" id="new-admin-role">
+                <option value="admin">👤 Admin</option>
+                <option value="superadmin">⭐ Super Admin</option>
+              </select>
+            </div>
           </div>
           <div id="team-msg" style="display:none;font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:8px"></div>
-          <button class="btn btn-teal" id="add-admin">Add Team Member</button>
+          <button class="btn btn-primary" id="add-admin">Add Team Member</button>
         </div>`:""}
     </div>`;
   }
 
   else if(tab==="client"&&client){
     mainContent=`<div class="admin-card">
-      <div style="display:flex;align-items:center;gap:16px;padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:20px">
-        ${avatarEl(client.name,client.photo_url||"",52)}
-        <div style="flex:1">
-          <p class="admin-label" style="margin-bottom:3px">Client Profile</p>
-          <p style="font-weight:900;font-size:20px;color:#fff">${client.name}</p>
-          <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:5px">
-            <span style="color:rgba(255,255,255,.5);font-size:13px">✉ ${client.email}</span>
-            ${client.phone?`<span style="color:rgba(255,255,255,.5);font-size:13px">📞 ${client.phone}</span>`:""}
-            ${client.address?`<span style="color:rgba(255,255,255,.5);font-size:13px">📍 ${client.address}</span>`:""}
-          </div>
-        </div>
-        ${badgeEl(f.status)}
-      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div><label class="admin-label">Property Address</label><input class="dark-input" id="f-address" value="${f.address||""}" placeholder="123 Main St"/></div>
-        <div><label class="admin-label">Closing Date</label><input class="dark-input" id="f-closing" type="date" value="${f.closing_date||""}"/></div>
-        <div><label class="admin-label">Status</label>
+        <div class="input-group"><label class="input-label">Property Address</label><input class="dark-input" id="f-address" value="${f.address||""}" placeholder="123 Main St"/></div>
+        <div class="input-group"><label class="input-label">Closing Date</label><input class="dark-input" id="f-closing" type="date" value="${f.closing_date||""}"/></div>
+        <div class="input-group"><label class="input-label">Status</label>
           <select class="dark-input" id="f-status">${FILE_STATUSES.map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
-        <div><label class="admin-label">Milestone</label>
+        <div class="input-group"><label class="input-label">Milestone</label>
           <select class="dark-input" id="f-milestone">${MILESTONES.map((m,i)=>`<option value="${i}" ${f.milestone===i?"selected":""}>${i+1}. ${m}</option>`).join("")}</select></div>
-        <div style="grid-column:1/-1"><label class="admin-label">Coordinator</label><input class="dark-input" id="f-coord" value="${f.coordinator||"Danielle McCarter"}"/></div>
+        <div class="input-group" style="grid-column:1/-1"><label class="input-label">Coordinator</label><input class="dark-input" id="f-coord" value="${f.coordinator||"Danielle McCarter"}"/></div>
       </div>
       <div style="display:flex;gap:10px;margin-top:18px;align-items:center">
-        <button class="btn btn-teal" id="save-file">Save Changes</button>
-        <div id="save-msg" style="display:none;font-size:12px;color:#68D391;font-weight:700">✓ Saved!</div>
+        <button class="btn btn-primary" id="save-file">Save Changes</button>
+        <div id="save-msg" style="display:none;font-size:12px;color:var(--success);font-weight:700">✓ Saved!</div>
       </div>
-      <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,.08)">
-        <p class="admin-label" style="margin-bottom:12px">Reset Client Password</p>
+      <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+        <p style="font-weight:700;font-size:14px;color:var(--ink);margin-bottom:12px">Reset Client Password</p>
         <div style="display:flex;gap:8px">
           <input class="dark-input" id="new-pw" type="text" placeholder="Set new password for client" style="flex:1"/>
-          <button class="btn btn-ghost btn-sm" id="reset-pw" style="white-space:nowrap;color:#fff;border-color:rgba(255,255,255,.2)">Reset</button>
+          <button class="btn btn-ghost btn-sm" id="reset-pw" style="white-space:nowrap">Reset</button>
         </div>
         <div id="pw-reset-msg" style="display:none;font-size:12px;margin-top:8px"></div>
       </div>
@@ -948,16 +1307,16 @@ async function renderAdmin(selId=null,tab="overview"){
   else if(tab==="tasks"&&client){
     const tl=tasks||[];
     mainContent=`<div class="admin-card">
-      <p class="admin-label" style="margin-bottom:16px">Client Tasks</p>
+      <p style="font-weight:800;font-size:16px;color:var(--ink);margin-bottom:16px">Client Tasks</p>
       <div style="display:flex;gap:8px;margin-bottom:18px">
         <input class="dark-input" id="task-input" placeholder="Add a task for the client…" style="flex:1"/>
-        <button class="btn btn-teal btn-sm" id="add-task">+ Add</button>
+        <button class="btn btn-primary btn-sm" id="add-task">+ Add</button>
       </div>
-      ${tl.length===0?`<p style="color:rgba(255,255,255,.3)">No tasks yet.</p>`
+      ${tl.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">✅</p><p>No tasks yet.</p></div>`
       :tl.map(t=>`<div class="admin-row" style="cursor:default">
-        <div style="width:18px;height:18px;border-radius:5px;border:2px solid ${t.done?"var(--teal)":"rgba(255,255,255,.3)"};background:${t.done?"var(--teal)":"transparent"};display:flex;align-items:center;justify-content:center;flex-shrink:0">${t.done?`<svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`:""}</div>
-        <p style="flex:1;font-size:13px;color:${t.done?"rgba(255,255,255,.35)":"#fff"};text-decoration:${t.done?"line-through":"none"}">${t.text}</p>
-        <button data-tid="${t.id}" class="del-task" style="background:none;border:none;color:rgba(255,80,80,.6);font-size:20px;cursor:pointer;transition:transform .2s" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">×</button>
+        <div style="width:18px;height:18px;border-radius:5px;border:2px solid ${t.done?"var(--teal)":"var(--border)"};background:${t.done?"var(--teal)":"transparent"};display:flex;align-items:center;justify-content:center;flex-shrink:0">${t.done?`<svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`:""}</div>
+        <p style="flex:1;font-size:13px;color:${t.done?"var(--muted)":"var(--ink)"};text-decoration:${t.done?"line-through":"none"}">${t.text}</p>
+        <button data-tid="${t.id}" class="del-task btn btn-danger btn-sm" style="padding:4px 10px">×</button>
       </div>`).join("")}
     </div>`;
   }
@@ -965,17 +1324,17 @@ async function renderAdmin(selId=null,tab="overview"){
   else if(tab==="dates"&&client){
     const dl=dates||[];
     mainContent=`<div class="admin-card">
-      <p class="admin-label" style="margin-bottom:16px">Key Dates</p>
+      <p style="font-weight:800;font-size:16px;color:var(--ink);margin-bottom:16px">Key Dates</p>
       <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
         <input class="dark-input" id="date-label" placeholder="e.g. Inspection Deadline" style="flex:2;min-width:140px"/>
         <input class="dark-input" id="date-val" type="date" style="flex:1;min-width:140px"/>
-        <button class="btn btn-teal btn-sm" id="add-date">+ Add</button>
+        <button class="btn btn-primary btn-sm" id="add-date">+ Add</button>
       </div>
-      ${dl.length===0?`<p style="color:rgba(255,255,255,.3)">No key dates added yet.</p>`
+      ${dl.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">📅</p><p>No key dates added yet.</p></div>`
       :dl.map(d=>{const days=daysUntil(d.date);const ind=days===null?"":days<0?`⚠️ ${Math.abs(days)}d overdue`:days===0?"Today!":days<=3?`⚠️ ${days}d`:`${days}d away`;
       return`<div class="admin-row" style="cursor:default">
-        <div style="flex:1"><p style="font-size:13px;color:#fff;font-weight:600">${d.label}</p><p style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">${fmtDate(d.date)} ${ind?`· <span style="color:${days<0?"#FC8181":"#F6E05E"}">${ind}</span>`:""}</p></div>
-        <button data-did="${d.id}" class="del-date" style="background:none;border:none;color:rgba(255,80,80,.6);font-size:20px;cursor:pointer;transition:transform .2s" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">×</button>
+        <div style="flex:1"><p style="font-size:13px;color:var(--ink);font-weight:600">${d.label}</p><p style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDate(d.date)} ${ind?`· <span style="color:${days<0?"var(--danger)":"var(--warning)"};font-weight:700">${ind}</span>`:""}</p></div>
+        <button data-did="${d.id}" class="del-date btn btn-danger btn-sm" style="padding:4px 10px">×</button>
       </div>`;}).join("")}
     </div>`;
   }
@@ -983,18 +1342,18 @@ async function renderAdmin(selId=null,tab="overview"){
   else if(tab==="contacts"&&client){
     const cl=contacts||[];
     mainContent=`<div class="admin-card">
-      <p class="admin-label" style="margin-bottom:16px">Key Contacts</p>
+      <p style="font-weight:800;font-size:16px;color:var(--ink);margin-bottom:16px">Key Contacts</p>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:18px;align-items:end">
-        <input class="dark-input" id="c-role" placeholder="Role"/>
-        <input class="dark-input" id="c-name" placeholder="Name"/>
-        <input class="dark-input" id="c-phone" placeholder="Phone"/>
-        <input class="dark-input" id="c-email" placeholder="Email"/>
-        <button class="btn btn-teal btn-sm" id="add-contact">+ Add</button>
+        <div class="input-group" style="margin-bottom:0"><label class="input-label">Role</label><input class="dark-input" id="c-role" placeholder="e.g. Title Company"/></div>
+        <div class="input-group" style="margin-bottom:0"><label class="input-label">Name</label><input class="dark-input" id="c-name" placeholder="Contact Name"/></div>
+        <div class="input-group" style="margin-bottom:0"><label class="input-label">Phone</label><input class="dark-input" id="c-phone" placeholder="Phone"/></div>
+        <div class="input-group" style="margin-bottom:0"><label class="input-label">Email</label><input class="dark-input" id="c-email" placeholder="Email"/></div>
+        <button class="btn btn-primary btn-sm" id="add-contact" style="margin-top:18px">+ Add</button>
       </div>
-      ${cl.length===0?`<p style="color:rgba(255,255,255,.3)">No contacts added yet.</p>`
+      ${cl.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">🏢</p><p>No contacts added yet.</p></div>`
       :cl.map(c=>`<div class="admin-row" style="cursor:default">
-        <div style="flex:1"><p style="font-size:13px;color:#fff;font-weight:600">${c.name} <span style="color:rgba(255,255,255,.35);font-weight:400">· ${c.role}</span></p><p style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">${c.phone||""} ${c.email?`· ${c.email}`:""}</p></div>
-        <button data-coid="${c.id}" class="del-contact" style="background:none;border:none;color:rgba(255,80,80,.6);font-size:20px;cursor:pointer;transition:transform .2s" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">×</button>
+        <div style="flex:1"><p style="font-size:13px;color:var(--ink);font-weight:600">${c.name} <span style="color:var(--muted);font-weight:400">· ${c.role}</span></p><p style="font-size:11px;color:var(--muted);margin-top:2px">${c.phone||""} ${c.email?`· ${c.email}`:""}</p></div>
+        <button data-coid="${c.id}" class="del-contact btn btn-danger btn-sm" style="padding:4px 10px">×</button>
       </div>`).join("")}
     </div>`;
   }
@@ -1002,18 +1361,25 @@ async function renderAdmin(selId=null,tab="overview"){
   else if(tab==="documents"&&client){
     const dl=docs||[];
     mainContent=`<div class="admin-card">
-      <p class="admin-label" style="margin-bottom:16px">Documents</p>
+      <p style="font-weight:800;font-size:16px;color:var(--ink);margin-bottom:16px">Documents</p>
       <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
-        <input class="dark-input" id="doc-name" placeholder="Document name" style="flex:2;min-width:130px"/>
-        <input class="dark-input" id="doc-cat" placeholder="Category" style="flex:1;min-width:110px"/>
-        <input class="dark-input" id="doc-url" placeholder="https://link-to-doc..." style="flex:3;min-width:180px"/>
-        <button class="btn btn-teal btn-sm" id="add-doc">+ Add</button>
+        <div class="input-group" style="flex:2;min-width:130px;margin-bottom:0"><label class="input-label">Document Name</label><input class="dark-input" id="doc-name" placeholder="Document name"/></div>
+        <div class="input-group" style="flex:1;min-width:110px;margin-bottom:0"><label class="input-label">Category</label><input class="dark-input" id="doc-cat" placeholder="Category"/></div>
+        <div class="input-group" style="flex:3;min-width:180px;margin-bottom:0"><label class="input-label">Link URL</label><input class="dark-input" id="doc-url" placeholder="https://drive.google.com/..."/></div>
+        <button class="btn btn-primary btn-sm" id="add-doc" style="margin-top:18px">+ Add</button>
       </div>
-      ${dl.length===0?`<p style="color:rgba(255,255,255,.3)">No documents yet.</p>`
+      ${dl.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">📁</p><p>No documents yet.</p></div>`
       :dl.map(doc=>`<div class="admin-row" style="cursor:default">
-        <span style="font-size:18px;transition:transform .2s" onmouseover="this.style.transform='scale(1.2) rotate(-5deg)'" onmouseout="this.style.transform='scale(1)'">📄</span>
-        <div style="flex:1"><p style="font-weight:600;font-size:13px;color:#fff">${doc.name} <span style="color:rgba(255,255,255,.3);font-size:11px">· ${doc.category||"General"}</span></p><a href="${doc.url}" style="font-size:11px;color:var(--teal-light)">${doc.url}</a></div>
-        <button data-docid="${doc.id}" class="del-doc" style="background:none;border:none;color:rgba(255,80,80,.6);font-size:20px;cursor:pointer;transition:transform .2s" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">×</button>
+        <div style="width:36px;height:36px;border-radius:10px;background:${doc.uploaded_by==="client"?"#FEFCBF":"var(--teal-mist)"};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:transform .2s" onmouseover="this.style.transform='scale(1.1) rotate(-5deg)'" onmouseout="this.style.transform='scale(1)'">📄</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px">
+            <p style="font-weight:600;font-size:13px;color:var(--ink)">${doc.name}</p>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${doc.uploaded_by==="client"?"#FEFCBF":"var(--teal-mist)"};color:${doc.uploaded_by==="client"?"#744210":"var(--teal-dark)"}">${doc.uploaded_by==="client"?"Client":"TC"}</span>
+            <span style="font-size:10px;color:var(--muted)">${doc.category||"General"}</span>
+          </div>
+          <a href="${doc.url}" target="_blank" style="font-size:11px;color:var(--teal)">${doc.url.slice(0,50)}${doc.url.length>50?"...":""}</a>
+        </div>
+        <button data-docid="${doc.id}" class="del-doc btn btn-danger btn-sm" style="padding:4px 10px">×</button>
       </div>`).join("")}
     </div>`;
   }
@@ -1039,46 +1405,57 @@ async function renderAdmin(selId=null,tab="overview"){
     ...(isSuperAdmin?[{id:"team",icon:"👥",label:"Team Management"}]:[]),
   ];
 
-  show(`<div class="admin-panel" style="display:flex;flex-direction:column">
+  show(`<div class="admin-panel" style="display:flex;flex-direction:column;background:${tab==="overview"?"var(--main-bg)":"linear-gradient(160deg,#0f1e26 0%,#1a3040 100%)"}">
     <!-- Admin Topbar -->
-    <div class="admin-topbar">
-      <div style="display:flex;align-items:center;gap:12px">
-        ${logoEl(true)}
-        <span style="background:rgba(58,157,181,.2);color:var(--teal-light);font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;border:1px solid rgba(58,157,181,.3)">${isSuperAdmin?"⭐ SUPER ADMIN":"👤 ADMIN"}</span>
+    <div class="admin-topbar" style="background:${tab==="overview"?"var(--white)":"rgba(0,0,0,.25)"};border-bottom:1px solid ${tab==="overview"?"var(--border)":"rgba(255,255,255,.07)"};box-shadow:${tab==="overview"?"0 1px 4px rgba(0,0,0,.06)":"none"}">
+      <div style="display:flex;align-items:center;gap:14px">
+        ${logoEl(tab!=="overview")}
+        <span style="background:${tab==="overview"?"#EBF8FF":"rgba(58,157,181,.2)"};color:${tab==="overview"?"#2B6CB0":"var(--teal-light)"};font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;border:1px solid ${tab==="overview"?"#BEE3F8":"rgba(58,157,181,.3)"}">${isSuperAdmin?"⭐ SUPER ADMIN":"👤 ADMIN"}</span>
+        ${tab==="overview"?`<div style="display:flex;align-items:center;gap:8px;background:var(--main-bg);border:1px solid var(--border);border-radius:10px;padding:7px 14px;margin-left:12px;min-width:200px">
+          <span style="color:var(--muted);font-size:14px">🔍</span>
+          <input placeholder="Search clients..." style="border:none;outline:none;background:transparent;font-size:13px;color:var(--ink);width:100%" onkeyup="const v=this.value.toLowerCase();document.querySelectorAll('.client-row[data-cid]').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(v)?'flex':'none'})"/>
+        </div>`:""}
       </div>
       <div style="display:flex;align-items:center;gap:10px">
-        ${avatarEl(currentAdmin?.name||"Admin","",32)}
-        <span style="color:rgba(255,255,255,.7);font-size:13px;font-weight:500">${currentAdmin?.name||"Admin"}</span>
-        <button id="admin-signout" class="signout-btn" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.13)">Sign Out</button>
+        ${avatarEl(currentAdmin?.name||"Admin","",34)}
+        <div>
+          <p style="font-weight:700;font-size:13px;color:${tab==="overview"?"var(--ink)":"rgba(255,255,255,.85)"}">${currentAdmin?.name||"Admin"}</p>
+          <p style="font-size:10px;color:${tab==="overview"?"var(--muted)":"rgba(255,255,255,.4)"}">${isSuperAdmin?"Super Admin":"Admin"}</p>
+        </div>
+        <button id="admin-signout" style="background:${tab==="overview"?"var(--main-bg)":"rgba(255,255,255,.08)"};color:${tab==="overview"?"var(--ink)":"rgba(255,255,255,.7)"};border:1px solid ${tab==="overview"?"var(--border)":"rgba(255,255,255,.13)"};border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s">Sign Out</button>
       </div>
     </div>
     <div style="display:flex;flex:1;min-height:0">
       <!-- Admin Sidebar -->
-      <div class="admin-sidebar">
-        <div style="padding:0 14px 16px;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:12px">
+      <div class="admin-sidebar" style="background:${tab==="overview"?"var(--sidebar-bg)":"linear-gradient(180deg,#0a1820 0%,#142030 100%)"};border-right:1px solid ${tab==="overview"?"var(--border)":"rgba(255,255,255,.06)"}">
+        <div style="padding:0 14px 16px;border-bottom:1px solid ${tab==="overview"?"var(--border)":"rgba(255,255,255,.06)"};margin-bottom:12px">
           <img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png" style="height:30px;width:auto" alt="CloseFlow TC"/>
         </div>
         <div style="padding:0 10px">
-          ${adminNavItems.map(n=>`<button data-nav="${n.id}" class="admin-nav-item ${tab===n.id?"active":""}">
+          ${adminNavItems.map(n=>`<button data-nav="${n.id}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;font-size:13px;font-weight:${tab===n.id?700:500};color:${tab==="overview"?(tab===n.id?"#fff":"var(--muted)"):(tab===n.id?"#fff":"rgba(255,255,255,.6)")};background:${tab===n.id?(tab==="overview"?"var(--sidebar-active)":"rgba(58,157,181,.2)"):"transparent"};border:none;cursor:pointer;width:100%;text-align:left;margin-bottom:2px;transition:all .2s;border-left:${tab===n.id?"3px solid var(--teal)":"3px solid transparent"}" onmouseover="this.style.background='${tab==="overview"?"var(--white)":"rgba(255,255,255,.07)"}'" onmouseout="this.style.background='${tab===n.id?(tab==="overview"?"var(--sidebar-active)":"rgba(58,157,181,.2)"):"transparent"}'">
             <span style="font-size:15px">${n.icon}</span>${n.label}
           </button>`).join("")}
-          <div style="height:1px;background:rgba(255,255,255,.06);margin:10px 0"></div>
-          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.25);text-transform:uppercase;letter-spacing:.1em;padding:6px 4px 8px">Clients (${allClients.length})</p>
+          <div style="height:1px;background:${tab==="overview"?"var(--border)":"rgba(255,255,255,.06)"};margin:10px 0"></div>
+          <p style="font-size:10px;font-weight:700;color:${tab==="overview"?"var(--muted)":"rgba(255,255,255,.25)"};text-transform:uppercase;letter-spacing:.1em;padding:6px 4px 8px">Clients (${allClients.length})</p>
           ${allClients.map(c=>{const sc=STATUS[c.status||"Pending"]||{dot:"#aaa"};
-          return`<button class="admin-nav-item sidebar-btn ${c.id===activeId&&tab!=="overview"&&tab!=="team"?"active":""}" data-cid="${c.id}">
+          const isActive=c.id===activeId&&tab!=="overview"&&tab!=="team";
+          return`<button class="sidebar-btn" data-cid="${c.id}" style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;font-size:13px;background:${isActive?(tab==="overview"?"var(--sidebar-active)":"rgba(58,157,181,.2)"):"transparent"};border:none;cursor:pointer;width:100%;text-align:left;margin-bottom:2px;transition:all .2s;border-left:${isActive?"3px solid var(--teal)":"3px solid transparent"}" onmouseover="this.style.background='${tab==="overview"?"var(--white)":"rgba(255,255,255,.07)"}'" onmouseout="this.style.background='${isActive?(tab==="overview"?"var(--sidebar-active)":"rgba(58,157,181,.2)"):"transparent"}'">
             <div style="width:7px;height:7px;border-radius:50%;background:${sc.dot};flex-shrink:0"></div>
-            <div style="min-width:0"><p style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</p><p style="font-size:10px;opacity:.5;margin-top:1px">${c.status||"Pending"}</p></div>
+            <div style="min-width:0">
+              <p style="font-weight:600;font-size:13px;color:${tab==="overview"?(isActive?"#fff":"var(--ink)"):(isActive?"#fff":"rgba(255,255,255,.6)")};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</p>
+              <p style="font-size:10px;color:${tab==="overview"?"var(--muted)":"rgba(255,255,255,.35)"};margin-top:1px">${c.status||"Pending"}</p>
+            </div>
           </button>`;}).join("")}
         </div>
-        <div style="margin-top:auto;padding:12px 14px;border-top:1px solid rgba(255,255,255,.06)">
-          <div style="background:rgba(58,157,181,.12);border:1px solid rgba(58,157,181,.2);border-radius:10px;padding:12px;text-align:center">
-            <p style="font-size:9px;color:rgba(255,255,255,.35);font-weight:800;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Invite Code</p>
+        <div style="margin-top:auto;padding:12px 14px;border-top:1px solid ${tab==="overview"?"var(--border)":"rgba(255,255,255,.06)"}">
+          <div style="background:linear-gradient(135deg,var(--sidebar-active),#2D4A5A);border-radius:10px;padding:12px;text-align:center">
+            <p style="font-size:9px;color:rgba(255,255,255,.4);font-weight:800;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Invite Code</p>
             <p style="font-size:18px;font-weight:900;color:#fff;letter-spacing:3px">${INVITE}</p>
           </div>
         </div>
       </div>
       <!-- Admin Main -->
-      <div class="admin-main fade-in">
+      <div class="admin-main fade-in" style="background:${tab==="overview"?"var(--main-bg)":"linear-gradient(160deg,#0f1e26 0%,#172838 100%)"};padding:28px">
         ${client&&tab!=="overview"&&tab!=="team"?`
           <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
             ${avatarEl(client.name,client.photo_url||"",46)}
@@ -1097,6 +1474,23 @@ async function renderAdmin(selId=null,tab="overview"){
   </div>`);
 
   on("#admin-signout","click",()=>{SESSION=null;renderLogin();});
+
+  // Admin donut chart
+  if(tab==="overview"){
+    const ctx=qs("#admin-donut");
+    if(ctx){
+      const active2=allClients.length;
+      const closed2=allClients.filter(c=>c.status==="Closed").length;
+      const pending2=allClients.filter(c=>c.status==="Pending").length;
+      const onHold2=allClients.filter(c=>c.status==="On Hold").length;
+      new Chart(ctx,{type:"doughnut",data:{
+        labels:["Active","Pending","On Hold","Closed"],
+        datasets:[{data:[active2||1,pending2,onHold2,closed2],
+          backgroundColor:["#3A9DB5","#D69E2E","#E53E3E","#38A169"],
+          borderWidth:0,hoverOffset:4}]},
+        options:{cutout:"72%",plugins:{legend:{display:false}},animation:{animateScale:true}}});
+    }
+  }
   qsa("[data-nav]").forEach(btn=>btn.addEventListener("click",()=>{if(btn.dataset.nav==="team")renderAdmin(null,"team");else renderAdmin(null,"overview");}));
   qsa(".sidebar-btn[data-cid]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(btn.dataset.cid,"client")));
   qsa("[data-atab]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(activeId,btn.dataset.atab)));
@@ -1117,7 +1511,7 @@ async function renderAdmin(selId=null,tab="overview"){
   on("#admin-msg","keydown",async e=>{if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:activeId,from_name:"CloseFlow TC",text,date:new Date().toISOString().slice(0,10),is_admin:true});e.target.value="";await renderAdmin(activeId,"messages");});
   const ml=qs("#admin-msg-list");if(ml)ml.scrollTop=ml.scrollHeight;
 
-  on("#add-admin","click",async()=>{const name=qs("#new-admin-name")?.value.trim();const email=qs("#new-admin-email")?.value.trim();const pass=qs("#new-admin-pass")?.value;const role=qs("#new-admin-role")?.value||"admin";const msg=qs("#team-msg");if(!name||!email||!pass){if(msg){msg.style.display="block";msg.style.background="rgba(255,80,80,.15)";msg.style.color="#FC8181";msg.textContent="Please fill in all fields.";}return;}const{data:exists}=await sb.from("admins").select("id").eq("email",email).single();if(exists){if(msg){msg.style.display="block";msg.style.background="rgba(255,80,80,.15)";msg.style.color="#FC8181";msg.textContent="An admin with this email already exists.";}return;}const{error}=await sb.from("admins").insert({name,email,password:pass,role});if(error){if(msg){msg.style.display="block";msg.style.background="rgba(255,80,80,.15)";msg.style.color="#FC8181";msg.textContent="Something went wrong.";}return;}await renderAdmin(null,"team");});
+  on("#add-admin","click",async()=>{const name=qs("#new-admin-name")?.value.trim();const email=qs("#new-admin-email")?.value.trim();const pass=qs("#new-admin-pass")?.value;const role=qs("#new-admin-role")?.value||"admin";const msg=qs("#team-msg");    if(!name||!email||!pass){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in all fields.";}return;}const{data:exists}=await sb.from("admins").select("id").eq("email",email).single();if(exists){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="An admin with this email already exists.";}return;}const{error}=await sb.from("admins").insert({name,email,password:pass,role});if(error){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Something went wrong.";}return;}await renderAdmin(null,"team");});
   qsa(".role-select").forEach(sel=>{sel.addEventListener("change",async()=>{await sb.from("admins").update({role:sel.value}).eq("id",sel.dataset.aid);await renderAdmin(null,"team");});});
   qsa(".del-admin").forEach(btn=>{btn.addEventListener("click",async()=>{if(!confirm("Remove this team member?"))return;await sb.from("admins").delete().eq("id",btn.dataset.aid);await renderAdmin(null,"team");});});
 }
