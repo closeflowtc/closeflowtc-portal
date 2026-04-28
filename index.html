@@ -188,6 +188,53 @@ async function notifyAdmins(clientName,notificationType,details){
   }catch(e){console.error("Email failed:",e);}
 }
 
+// ── NOTIFY CLIENT BY EMAIL ────────────────────────────────────────────────────
+async function notifyClient(clientEmail,clientName,notificationType,details,propertyAddress){
+  try{
+    await emailjs.send(EJS_SERVICE,"template_ajgunbg",{
+      to_email:clientEmail,to_name:clientName,
+      notification_type:notificationType,details,
+      property_address:propertyAddress||"Your property",
+      portal_link:"https://portal.closeflowtc.com",
+      timestamp:new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",hour12:true}),
+    });
+  }catch(e){console.error("Client email failed:",e);}
+}
+
+// ── CREATE IN-PORTAL NOTIFICATION ─────────────────────────────────────────────
+async function createNotification(clientId,fileId,message,type="info"){
+  try{
+    await sb.from("notifications").insert({client_id:clientId,file_id:fileId,message,type,is_read:false});
+  }catch(e){console.error("Notification insert failed:",e);}
+}
+
+// ── CHECK UPCOMING REMINDERS (1 DAY BEFORE) ───────────────────────────────────
+async function checkUpcomingReminders(){
+  try{
+    const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
+    const tomorrowStr=tomorrow.toISOString().slice(0,10);
+    const{data:upcoming}=await sb.from("key_dates")
+      .select("*, files(address,client_id), clients(name,email)")
+      .eq("date",tomorrowStr)
+      .is("reminder_sent_date",null);
+    if(!upcoming||!upcoming.length)return;
+    for(const d of upcoming){
+      const clientName=d.clients?.name||"Client";
+      const clientEmail=d.clients?.email||"";
+      const propertyAddress=d.files?.address||"Your property";
+      const message=`Reminder: "${d.label}" is tomorrow — ${fmtDate(d.date)} — ${propertyAddress}`;
+      // In-portal notification
+      await createNotification(d.client_id,d.file_id,message,"reminder");
+      // Email client
+      if(clientEmail)await notifyClient(clientEmail,clientName,"📅 Date Reminder — Tomorrow",`"${d.label}" is tomorrow, ${fmtDate(d.date)}. Please make sure everything is in order.`,propertyAddress);
+      // Email admins
+      await notifyAdmins(clientName,"📅 Date Reminder — Tomorrow",`"${d.label}" is tomorrow (${fmtDate(d.date)}) for ${clientName} — ${propertyAddress}`);
+      // Mark sent
+      await sb.from("key_dates").update({reminder_sent_date:new Date().toISOString().slice(0,10)}).eq("id",d.id);
+    }
+  }catch(e){console.error("Reminder check failed:",e);}
+}
+
 const INVITE="FLOW2026";
 const MILESTONES=["Deal Submitted","Title Ordered","Title Search Complete","Clear to Close","HUD Sent for Approval","Closing Scheduled","Closed"];
 const FILE_STATUSES=["Active","Pending","On Hold","Archived","Closed"];
@@ -223,19 +270,13 @@ function badgeEl(status){const c=STATUS[status]||{bg:"#EDF2F7",text:"#4A5568",do
 function roleBadge(role){const isSA=role==="superadmin";return`<span class="chip" style="background:${isSA?"#FEFCBF":"#EBF8FF"};color:${isSA?"#744210":"#2B6CB0"}">${isSA?"⭐ Super Admin":"👤 Admin"}</span>`;}
 function logoEl(light=false){const tc=light?"#fff":"#1C2B32";const sub=light?"rgba(255,255,255,.5)":"#718096";return`<div style="display:flex;align-items:center;gap:10px"><img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png" style="height:32px;width:auto" alt="CloseFlow TC"/><div><div style="font-size:13px;font-weight:800;color:${tc};letter-spacing:.05em;text-transform:uppercase;line-height:1.1">CloseFlow TC</div><div style="font-size:8px;color:${sub};letter-spacing:.12em;text-transform:uppercase;margin-top:1px">Where Every Closing Flows</div></div></div>`;}
 
-// ── ICS CALENDAR EXPORT ────────────────────────────────────────────────────────
-function exportToCalendar(dates,propertyAddress){
-  let ics="BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//CloseFlow TC//Portal//EN\n";
-  (dates||[]).forEach(d=>{
-    if(!d.date)return;
-    const dt=d.date.replace(/-/g,"");
-    const uid=`${Date.now()}-${Math.random().toString(36).slice(2)}@closeflowtc.com`;
-    ics+=`BEGIN:VEVENT\nUID:${uid}\nDTSTART;VALUE=DATE:${dt}\nDTEND;VALUE=DATE:${dt}\nSUMMARY:${d.label} — ${propertyAddress||"CloseFlow TC"}\nDESCRIPTION:Key date from CloseFlow TC portal\nEND:VEVENT\n`;
-  });
-  ics+="END:VCALENDAR";
-  const blob=new Blob([ics],{type:"text/calendar"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");a.href=url;a.download="closeflow-dates.ics";a.click();URL.revokeObjectURL(url);
+// ── GOOGLE CALENDAR LINK ──────────────────────────────────────────────────────
+function googleCalLink(label,date,address){
+  if(!date)return"#";
+  const dt=date.replace(/-/g,"");
+  const title=encodeURIComponent(`${label} — ${address||"CloseFlow TC"}`);
+  const details=encodeURIComponent("Key closing date via CloseFlow TC portal | closeflowtc.com");
+  return`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dt}/${dt}&details=${details}`;
 }
 
 // ── WELCOME MODAL ──────────────────────────────────────────────────────────────
@@ -346,13 +387,14 @@ function renderLogin(mode="login",err=""){
 async function doLogin(){
   const email=qs("#f-email")?.value.trim(),pass=qs("#f-pass")?.value;
   const{data:adminData}=await sb.from("admins").select("*").eq("email",email).eq("password",pass).single();
-  if(adminData){SESSION={role:"admin",admin:adminData};await renderAdmin();return;}
+  if(adminData){SESSION={role:"admin",admin:adminData};await checkUpcomingReminders();await renderAdmin();return;}
   const{data,error}=await sb.from("clients").select("*").eq("email",email).eq("password",pass).single();
   if(error||!data){renderLogin("login","Incorrect email or password.");return;}
   SESSION={role:"client",client:data};
   // Load first file
   const{data:files}=await sb.from("files").select("*").eq("client_id",data.id).order("created_at");
   ACTIVE_FILE_ID=(files&&files.length)?files[0].id:null;
+  await checkUpcomingReminders();
   await renderClient(data.id,ACTIVE_FILE_ID);
 }
 async function doRegister(){
@@ -382,7 +424,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   if(!fileId&&files.length)fileId=files[0].id;
   ACTIVE_FILE_ID=fileId;
 
-  const[{data:client},{data:file},{data:docs},{data:msgs},{data:tasks},{data:dates},{data:contacts}]=await Promise.all([
+  const[{data:client},{data:file},{data:docs},{data:msgs},{data:tasks},{data:dates},{data:contacts},{data:notifs}]=await Promise.all([
     sb.from("clients").select("*").eq("id",clientId).single(),
     fileId?sb.from("files").select("*").eq("id",fileId).single():{data:null},
     fileId?sb.from("documents").select("*").eq("file_id",fileId).order("created_at"):{data:[]},
@@ -390,6 +432,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     fileId?sb.from("tasks").select("*").eq("file_id",fileId).order("created_at"):{data:[]},
     fileId?sb.from("key_dates").select("*").eq("file_id",fileId).order("date"):{data:[]},
     fileId?sb.from("contacts").select("*").eq("file_id",fileId):{data:[]},
+    sb.from("notifications").select("*").eq("client_id",clientId).order("created_at",{ascending:false}).limit(20),
   ]);
 
   const f=file||{address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"};
@@ -409,7 +452,14 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     {id:"account",icon:"👤",label:"My Account"},
   ];
 
-  // Property selector HTML
+  const unreadCount=(notifs||[]).filter(n=>!n.is_read).length;
+  const bellBg=unreadCount>0?"var(--teal-mist)":"var(--main-bg)";
+  const bellBorder=unreadCount>0?"var(--teal)":"var(--border)";
+  const bellBadge=unreadCount>0?`<div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:var(--danger);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--white)">${unreadCount>9?"9+":unreadCount}</div>`:"";
+  const bellHtml=`<div style="position:relative;cursor:pointer" id="notif-bell">
+    <div style="width:36px;height:36px;border-radius:10px;background:${bellBg};border:1.5px solid ${bellBorder};display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='${bellBg}'">🔔</div>
+    ${bellBadge}
+  </div>`;
   const propertySelectorHtml=files.length>0?`
     <div class="property-selector">
       <span style="font-size:14px">🏠</span>
@@ -489,7 +539,6 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     <div class="card card-pad" style="margin-top:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <p style="font-weight:700;font-size:15px;color:var(--ink)">📅 Key Dates Timeline</p>
-        <button class="btn btn-ghost btn-sm" id="sync-cal-overview">🗓 Sync to Calendar</button>
       </div>
       <div style="display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding-bottom:8px">
         ${dl.map((d,i)=>{const days=daysUntil(d.date);const done=days!==null&&days<0;const curr=days===0;return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:80px">
@@ -520,13 +569,22 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   else if(tab==="dates"){
     const dl=dates||[];
     content=`<div class="card card-pad">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="margin-bottom:16px">
         <p style="font-weight:700;font-size:16px;color:var(--ink)">📅 Key Dates & Deadlines</p>
-        ${dl.length>0?`<button class="btn btn-ghost btn-sm" id="sync-cal">🗓 Sync to Calendar</button>`:""}
+        <p style="font-size:12px;color:var(--muted);margin-top:4px">Click "Add to Calendar" on any date to save it directly to your Google Calendar.</p>
       </div>
       ${dl.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📅</p><p style="font-weight:600">No key dates added yet. Your coordinator will update these soon.</p></div>`
       :dl.map(d=>{const days=daysUntil(d.date);const cls=days===null?"date-complete":days<0?"date-overdue":"date-upcoming";const ind=days===null?"✓ Complete":days<0?`${Math.abs(days)}d overdue`:days===0?"Today!":days<=3?`${days}d away ⚠️`:`${days}d away`;const ic=days===null?"var(--success)":days<0?"var(--danger)":days<=3?"var(--warning)":"var(--teal)";
-      return`<div class="date-item ${cls}"><div><p style="font-weight:700;font-size:14px;color:var(--ink)">${d.label}</p><p style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDate(d.date)}</p></div><span style="font-size:12px;font-weight:700;color:${ic}">${ind}</span></div>`;}).join("")}
+      return`<div class="date-item ${cls}" style="flex-wrap:wrap;gap:8px">
+        <div style="flex:1">
+          <p style="font-weight:700;font-size:14px;color:var(--ink)">${d.label}</p>
+          <p style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDate(d.date)}</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+          <span style="font-size:12px;font-weight:700;color:${ic}">${ind}</span>
+          ${d.date?`<a href="${googleCalLink(d.label,d.date,f.address)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;background:#fff;border:1.5px solid var(--teal);color:var(--teal);border-radius:8px;padding:5px 11px;font-size:11px;font-weight:700;text-decoration:none;transition:all .2s;white-space:nowrap" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='#fff'">🗓 Add to Calendar</a>`:""}
+        </div>
+      </div>`;}).join("")}
     </div>`;
   }
 
@@ -724,6 +782,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
           <div style="flex-shrink:0">${badgeEl(f.status)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+          ${bellHtml}
           ${avatarEl(client?.name||"",client?.photo_url||"",36)}
           <div>
             <p style="font-weight:700;font-size:13px;color:var(--ink)">${client?.name||""}</p>
@@ -734,6 +793,41 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       <div class="content fade-in">${content}</div>
     </div>
   </div>`);
+
+  // Notification bell
+  on("#notif-bell","click",async()=>{
+    const existing=document.getElementById("notif-panel");
+    if(existing){existing.remove();return;}
+    // Mark all as read
+    await sb.from("notifications").update({is_read:true}).eq("client_id",clientId).eq("is_read",false);
+    const panel=document.createElement("div");
+    panel.id="notif-panel";
+    panel.style.cssText="position:fixed;top:72px;right:20px;width:340px;max-height:420px;background:var(--white);border-radius:16px;border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.15);z-index:500;overflow:hidden;animation:slideUp .2s ease";
+    const nl=notifs||[];
+    panel.innerHTML=`<div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <p style="font-weight:700;font-size:14px;color:var(--ink)">🔔 Notifications</p>
+      <button onclick="document.getElementById('notif-panel').remove()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="overflow-y:auto;max-height:340px">
+      ${nl.length===0?`<div style="padding:32px;text-align:center;color:var(--muted)"><p style="font-size:28px;margin-bottom:8px">🔔</p><p style="font-size:13px">No notifications yet.</p></div>`
+      :nl.map(n=>{
+        const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":"ℹ️";
+        const bg=n.is_read?"var(--white)":"var(--teal-mist)";
+        const dt=new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true});
+        return`<div style="padding:12px 18px;border-bottom:1px solid var(--border);background:${bg};transition:background .2s">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <span style="font-size:16px;flex-shrink:0;margin-top:1px">${ic}</span>
+            <div>
+              <p style="font-size:13px;color:var(--ink);line-height:1.5">${n.message}</p>
+              <p style="font-size:10px;color:var(--muted);margin-top:4px">${dt}</p>
+            </div>
+          </div>
+        </div>`;}).join("")}
+    </div>`;
+    document.body.appendChild(panel);
+    // Close on outside click
+    setTimeout(()=>document.addEventListener("click",function h(e){if(!panel.contains(e.target)&&!document.getElementById("notif-bell")?.contains(e.target)){panel.remove();document.removeEventListener("click",h);}},true),100);
+  });
 
   // Nav
   qsa(".client-nav-btn").forEach(btn=>btn.addEventListener("click",()=>renderClient(clientId,fileId,btn.dataset.tab)));
@@ -749,13 +843,10 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   if(tab==="overview"){
     const ctx=qs("#donut-chart");
     if(ctx)new Chart(ctx,{type:"doughnut",data:{datasets:[{data:[f.milestone,1,MILESTONES.length-f.milestone-1],backgroundColor:["#3A9DB5","#2D3748","#E2E8F0"],borderWidth:0,hoverOffset:4}]},options:{cutout:"72%",plugins:{legend:{display:false}},animation:{animateScale:true}}});
-    on("#sync-cal-overview","click",()=>exportToCalendar(dates,f.address));
   }
 
   // Stat arrows
   qsa(".stat-arrow").forEach((el,i)=>{const tabs=["overview","dates","tasks","milestones"];el.addEventListener("click",()=>{if(tabs[i])renderClient(clientId,fileId,tabs[i]);});});
-
-  on("#sync-cal","click",()=>exportToCalendar(dates,f.address));
 
   const ml=qs("#msg-list");if(ml)ml.scrollTop=ml.scrollHeight;
 
@@ -956,12 +1047,19 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     mainContent=`<div class="admin-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <p style="font-weight:800;font-size:16px;color:var(--ink)">Key Dates</p>
-        ${dl.length>0?`<button class="btn btn-ghost btn-sm" id="admin-export-cal">🗓 Export ICS</button>`:""}
       </div>
       <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap"><input class="dark-input" id="date-label" placeholder="e.g. Inspection Deadline" style="flex:2;min-width:140px"/><input class="dark-input" id="date-val" type="date" style="flex:1;min-width:140px"/><button class="btn btn-primary btn-sm" id="add-date">+ Add</button></div>
       ${dl.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">📅</p><p>No key dates added yet.</p></div>`
       :dl.map(d=>{const days=daysUntil(d.date);const ind=days===null?"":days<0?`⚠️ ${Math.abs(days)}d overdue`:days===0?"Today!":days<=3?`⚠️ ${days}d`:`${days}d away`;
-      return`<div class="admin-row" style="cursor:default"><div style="flex:1"><p style="font-size:13px;color:var(--ink);font-weight:600">${d.label}</p><p style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDate(d.date)}${ind?` · <span style="color:${days<0?"var(--danger)":"var(--warning)"};font-weight:700">${ind}</span>`:""}</p></div><button data-did="${d.id}" class="del-date btn btn-danger btn-sm" style="padding:4px 10px">×</button></div>`;}).join("")}
+      return`<div class="admin-row" style="cursor:default">
+        <div style="flex:1">
+          <p style="font-size:13px;color:var(--ink);font-weight:600">${d.label}</p>
+          <p style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDate(d.date)}${ind?` · <span style="color:${days<0?"var(--danger)":"var(--warning)"};font-weight:700">${ind}</span>`:""}
+          </p>
+        </div>
+        ${d.date?`<a href="${googleCalLink(d.label,d.date,f.address)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;background:var(--teal-mist);border:1.5px solid var(--teal);color:var(--teal);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap;flex-shrink:0">🗓 Add</a>`:""}
+        <button data-did="${d.id}" class="del-date btn btn-danger btn-sm" style="padding:4px 10px">×</button>
+      </div>`;}).join("")}
     </div>`;
   }
 
@@ -1006,6 +1104,16 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     </div>`;
   }
 
+  // Admin notifications
+  const{data:adminNotifs}=await sb.from("notifications").select("*").is("is_read",false).order("created_at",{ascending:false}).limit(50);
+  const adminUnread=(adminNotifs||[]).length;
+  const adminBellBg=adminUnread>0?"var(--teal-mist)":"var(--main-bg)";
+  const adminBellBorder=adminUnread>0?"var(--teal)":"var(--border)";
+  const adminBellBadge=adminUnread>0?`<div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:var(--danger);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--white)">${adminUnread>9?"9+":adminUnread}</div>`:"";
+  const adminBellHtml=`<div style="position:relative;cursor:pointer" id="admin-notif-bell">
+    <div style="width:36px;height:36px;border-radius:10px;background:${adminBellBg};border:1.5px solid ${adminBellBorder};display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='${adminBellBg}'">🔔</div>
+    ${adminBellBadge}
+  </div>`;
   const adminNavItems=[{id:"overview",icon:"📊",label:"Dashboard"},...(isSuperAdmin?[{id:"team",icon:"👥",label:"Team Management"}]:[])];
 
   show(`<div class="admin-wrap">
@@ -1034,6 +1142,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <span style="background:#EBF8FF;color:#2B6CB0;font-size:10px;font-weight:800;padding:4px 12px;border-radius:20px;border:1px solid #BEE3F8">${isSuperAdmin?"⭐ SUPER ADMIN":"👤 ADMIN"}</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
+        ${adminBellHtml}
         ${avatarEl(currentAdmin?.name||"Admin","",36)}
         <div><p style="font-weight:700;font-size:13px;color:var(--ink)">${currentAdmin?.name||"Admin"}</p><p style="font-size:10px;color:var(--muted)">${isSuperAdmin?"Super Admin":"Coordinator"}</p></div>
         <button id="admin-signout" style="background:var(--main-bg);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='var(--main-bg)'">Sign Out</button>
@@ -1084,14 +1193,85 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     setTimeout(()=>renderAdmin(activeClientId,newFile?.id,"client"),800);
   });
 
-  on("#save-file","click",async()=>{const address=qs("#f-address")?.value||"";const closing_date=qs("#f-closing")?.value||"";const status=qs("#f-status")?.value||"Pending";const milestone=parseInt(qs("#f-milestone")?.value||0);const coordinator=qs("#f-coord")?.value||"Danielle McCarter";await sb.from("files").update({address,closing_date,status,milestone,coordinator}).eq("id",activeFileId);const msg=qs("#save-msg");if(msg){msg.style.display="block";setTimeout(()=>msg.style.display="none",2000);}});
+  on("#save-file","click",async()=>{
+    const address=qs("#f-address")?.value||"";
+    const closing_date=qs("#f-closing")?.value||"";
+    const status=qs("#f-status")?.value||"Pending";
+    const milestone=parseInt(qs("#f-milestone")?.value||0);
+    const coordinator=qs("#f-coord")?.value||"Danielle McCarter";
+    const prev=file;
+    await sb.from("files").update({address,closing_date,status,milestone,coordinator}).eq("id",activeFileId);
+    // Notify if closing date or status changed
+    if(client&&prev){
+      if(closing_date&&closing_date!==prev.closing_date){
+        const msg=`Your closing date has been updated to ${fmtDate(closing_date)} — ${address||"your property"}`;
+        await createNotification(activeClientId,activeFileId,msg,"update");
+        await notifyClient(client.email,client.name,"📅 Closing Date Updated",`Your closing date has been updated to ${fmtDate(closing_date)}.`,address);
+        await notifyAdmins(client.name,"📅 Closing Date Updated",`Closing date changed to ${fmtDate(closing_date)} for ${client.name} — ${address||"TBD"}`);
+      }
+      if(status!==prev.status){
+        const msg=`Your file status has been updated to "${status}" — ${address||"your property"}`;
+        await createNotification(activeClientId,activeFileId,msg,"update");
+        await notifyClient(client.email,client.name,"📋 File Status Updated",`Your file status has been updated to "${status}".`,address);
+      }
+    }
+    const msg=qs("#save-msg");if(msg){msg.style.display="block";setTimeout(()=>msg.style.display="none",2000);}
+  });
   on("#reset-pw","click",async()=>{const pw=qs("#new-pw")?.value.trim();const msg=qs("#pw-reset-msg");if(!pw){if(msg){msg.style.display="block";msg.style.color="#FC8181";msg.textContent="Please enter a new password.";}return;}await sb.from("clients").update({password:pw}).eq("id",activeClientId);if(msg){msg.style.display="block";msg.style.color="#68D391";msg.textContent="✓ Password reset!";}if(qs("#new-pw"))qs("#new-pw").value="";});
   on("#add-task","click",async()=>{const text=qs("#task-input")?.value.trim();if(!text)return;await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false});await renderAdmin(activeClientId,activeFileId,"tasks");});
   on("#task-input","keydown",async e=>{if(e.key==="Enter"){const text=e.target.value.trim();if(!text)return;await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false});await renderAdmin(activeClientId,activeFileId,"tasks");}});
   qsa(".del-task").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("tasks").delete().eq("id",btn.dataset.tid);await renderAdmin(activeClientId,activeFileId,"tasks");}));
-  on("#add-date","click",async()=>{const label=qs("#date-label")?.value.trim();const date=qs("#date-val")?.value;if(!label||!date)return;await sb.from("key_dates").insert({client_id:activeClientId,file_id:activeFileId,label,date});await renderAdmin(activeClientId,activeFileId,"dates");});
+  // Admin notification bell
+  on("#admin-notif-bell","click",async()=>{
+    const existing=document.getElementById("admin-notif-panel");if(existing){existing.remove();return;}
+    const{data:allNotifs}=await sb.from("notifications").select("*, clients(name)").order("created_at",{ascending:false}).limit(40);
+    await sb.from("notifications").update({is_read:true}).eq("is_read",false);
+    const panel=document.createElement("div");
+    panel.id="admin-notif-panel";
+    panel.style.cssText="position:fixed;top:72px;right:20px;width:360px;max-height:440px;background:var(--white);border-radius:16px;border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.15);z-index:500;overflow:hidden;animation:slideUp .2s ease";
+    const nl=allNotifs||[];
+    panel.innerHTML=`<div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <p style="font-weight:700;font-size:14px;color:var(--ink)">🔔 All Notifications</p>
+      <button onclick="document.getElementById('admin-notif-panel').remove()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="overflow-y:auto;max-height:370px">
+      ${nl.length===0?`<div style="padding:32px;text-align:center;color:var(--muted)"><p style="font-size:28px;margin-bottom:8px">🔔</p><p style="font-size:13px">No notifications yet.</p></div>`
+      :nl.map(n=>{
+        const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":"ℹ️";
+        const dt=new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true});
+        const clientLabel=n.clients?.name?`<span style="font-size:10px;font-weight:700;background:var(--teal-mist);color:var(--teal-dark);padding:2px 8px;border-radius:20px;margin-left:6px">${n.clients.name}</span>`:"";
+        return`<div style="padding:12px 18px;border-bottom:1px solid var(--border);transition:background .2s" onmouseover="this.style.background='var(--main-bg)'" onmouseout="this.style.background='transparent'">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <span style="font-size:16px;flex-shrink:0;margin-top:1px">${ic}</span>
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:3px">
+                <p style="font-size:13px;color:var(--ink);line-height:1.5">${n.message}</p>
+                ${clientLabel}
+              </div>
+              <p style="font-size:10px;color:var(--muted)">${dt}</p>
+            </div>
+          </div>
+        </div>`;}).join("")}
+    </div>`;
+    document.body.appendChild(panel);
+    setTimeout(()=>document.addEventListener("click",function h(e){if(!panel.contains(e.target)&&!document.getElementById("admin-notif-bell")?.contains(e.target)){panel.remove();document.removeEventListener("click",h);}},true),100);
+  });
+
+  on("#add-date","click",async()=>{
+    const label=qs("#date-label")?.value.trim();
+    const date=qs("#date-val")?.value;
+    if(!label||!date)return;
+    await sb.from("key_dates").insert({client_id:activeClientId,file_id:activeFileId,label,date});
+    // Notify both sides immediately
+    if(client){
+      const msg=`New key date added: "${label}" on ${fmtDate(date)} — ${f.address||"your property"}`;
+      await createNotification(activeClientId,activeFileId,msg,"update");
+      await notifyClient(client.email,client.name,"📅 New Key Date Added",`A new key date has been added: "${label}" on ${fmtDate(date)}.`,f.address);
+      await notifyAdmins(client.name,"📅 Key Date Added",`"${label}" on ${fmtDate(date)} added for ${client.name} — ${f.address||"TBD"}`);
+    }
+    await renderAdmin(activeClientId,activeFileId,"dates");
+  });
   qsa(".del-date").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("key_dates").delete().eq("id",btn.dataset.did);await renderAdmin(activeClientId,activeFileId,"dates");}));
-  on("#admin-export-cal","click",()=>exportToCalendar(dates,f.address));
   on("#add-contact","click",async()=>{const role=qs("#c-role")?.value.trim();const name=qs("#c-name")?.value.trim();const phone=qs("#c-phone")?.value.trim();const email=qs("#c-email")?.value.trim();if(!role||!name)return;await sb.from("contacts").insert({client_id:activeClientId,file_id:activeFileId,role,name,phone,email});await renderAdmin(activeClientId,activeFileId,"contacts");});
   qsa(".del-contact").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("contacts").delete().eq("id",btn.dataset.coid);await renderAdmin(activeClientId,activeFileId,"contacts");}));
   on("#add-doc","click",async()=>{const name=qs("#doc-name")?.value.trim();const url=qs("#doc-url")?.value.trim();const category=qs("#doc-cat")?.value.trim()||"General";if(!name||!url)return;await sb.from("documents").insert({client_id:activeClientId,file_id:activeFileId,name,url,category,date:new Date().toISOString().slice(0,10)});await renderAdmin(activeClientId,activeFileId,"documents");});
