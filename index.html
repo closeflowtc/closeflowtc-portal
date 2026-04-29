@@ -281,23 +281,25 @@ function googleCalLink(label,date,address){
 
 // ── ONBOARDING MODAL ──────────────────────────────────────────────────────────
 function showOnboardingModal(clientId,onComplete){
+  const US_STATES=["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"];
   const el=document.createElement("div");
   el.id="onboarding-overlay";
   el.style.cssText="position:fixed;inset:0;background:rgba(28,43,50,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px;animation:fadeIn .3s ease";
   el.innerHTML=`
-  <div style="background:var(--white);border-radius:24px;border:1px solid var(--border);box-shadow:0 32px 80px rgba(0,0,0,.2);max-width:560px;width:100%;overflow:hidden;animation:slideUp .35s cubic-bezier(.34,1.56,.64,1)">
+  <div style="background:var(--white);border-radius:24px;border:1px solid var(--border);box-shadow:0 32px 80px rgba(0,0,0,.2);max-width:580px;width:100%;overflow:hidden;animation:slideUp .35s cubic-bezier(.34,1.56,.64,1);max-height:90vh;display:flex;flex-direction:column">
     <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1C2B32,#2D4A5A,#3A9DB5);padding:28px 32px 24px">
+    <div style="background:linear-gradient(135deg,#1C2B32,#2D4A5A,#3A9DB5);padding:28px 32px 24px;flex-shrink:0">
       <img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png" style="height:36px;margin-bottom:16px"/>
       <h2 style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.5px;margin-bottom:6px">Let's get you set up.</h2>
       <p style="font-size:13px;color:rgba(255,255,255,.6);line-height:1.6">This takes about 60 seconds. We use this to coordinate your closings the right way from day one.</p>
     </div>
     <!-- Progress bar -->
-    <div style="height:4px;background:rgba(58,157,181,.15)">
-      <div id="ob-progress" style="height:100%;background:var(--teal);border-radius:0;transition:width .4s ease;width:0%"></div>
+    <div style="height:4px;background:rgba(58,157,181,.15);flex-shrink:0">
+      <div id="ob-progress" style="height:100%;background:var(--teal);transition:width .4s ease;width:0%"></div>
     </div>
     <!-- Steps container -->
-    <div style="padding:28px 32px 24px">
+    <div style="padding:28px 32px 8px;overflow-y:auto;flex:1">
+
       <!-- Step 1: Business Info -->
       <div id="ob-step-1" class="ob-step">
         <p style="font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Step 1 of 4</p>
@@ -306,12 +308,14 @@ function showOnboardingModal(clientId,onComplete){
         <div class="input-group"><label class="input-label">Business / Entity Name <span style="color:var(--danger)">*</span></label><input class="finput" id="ob-business" placeholder="e.g. Smith Land Investments LLC"/></div>
         <div class="input-group"><label class="input-label">Mailing Address</label><input class="finput" id="ob-address" placeholder="123 Main St, City, State, ZIP"/></div>
       </div>
+
       <!-- Step 2: Time Zone + Comms -->
       <div id="ob-step-2" class="ob-step" style="display:none">
         <p style="font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Step 2 of 4</p>
         <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:4px">Your preferences</h3>
         <p style="font-size:13px;color:var(--muted);margin-bottom:20px">So we reach you the right way at the right time.</p>
-        <div class="input-group"><label class="input-label">Time Zone <span style="color:var(--danger)">*</span></label>
+        <div class="input-group">
+          <label class="input-label">Time Zone <span style="color:var(--danger)">*</span></label>
           <select class="finput" id="ob-timezone">
             <option value="">Select your time zone…</option>
             <option>Eastern (ET)</option><option>Central (CT)</option>
@@ -319,22 +323,40 @@ function showOnboardingModal(clientId,onComplete){
             <option>Alaska (AKT)</option><option>Hawaii (HT)</option>
           </select>
         </div>
-        <div class="input-group"><label class="input-label">Preferred Communication <span style="color:var(--danger)">*</span></label>
+        <div class="input-group">
+          <label class="input-label">Preferred Communication <span style="color:var(--danger)">*</span> <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(select all that apply)</span></label>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
-            ${["Email","Phone","Text","All three"].map(opt=>`<label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;border:1.5px solid var(--border);cursor:pointer;font-size:13px;font-weight:600;color:var(--ink);transition:all .2s;background:var(--white)" onmouseover="this.style.borderColor='var(--teal)'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='var(--border)'">
-              <input type="radio" name="ob-comm" value="${opt}" style="accent-color:var(--teal)"/> ${opt}
+            ${["Email","Phone","Text"].map(opt=>`
+            <label id="comm-label-${opt.toLowerCase()}" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;border:1.5px solid var(--border);cursor:pointer;font-size:13px;font-weight:600;color:var(--ink);transition:all .2s;background:var(--white);user-select:none">
+              <input type="checkbox" name="ob-comm" value="${opt}" id="ob-comm-${opt.toLowerCase()}" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer"/>
+              ${opt}
             </label>`).join("")}
           </div>
         </div>
       </div>
+
       <!-- Step 3: Markets -->
       <div id="ob-step-3" class="ob-step" style="display:none">
         <p style="font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Step 3 of 4</p>
         <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:4px">Your markets</h3>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Which states are you currently investing in?</p>
-        <div class="input-group"><label class="input-label">Active States / Markets <span style="color:var(--danger)">*</span></label><input class="finput" id="ob-markets" placeholder="e.g. Texas, Florida, Ohio"/></div>
-        <div style="background:var(--teal-mist);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--teal-dark);line-height:1.6">💡 List all states where you're actively sourcing or closing deals. You can update this anytime from your account.</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Select all states where you are actively investing.</p>
+        <!-- Search filter -->
+        <div style="position:relative;margin-bottom:10px">
+          <input id="ob-state-search" class="finput" placeholder="🔍  Search states…" style="padding-left:14px"/>
+        </div>
+        <!-- Selected tags -->
+        <div id="ob-selected-states" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;min-height:0"></div>
+        <!-- State checkboxes -->
+        <div id="ob-state-list" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;max-height:220px;overflow-y:auto;padding:4px;border:1.5px solid var(--border);border-radius:10px;background:var(--white)">
+          ${US_STATES.map(s=>`
+          <label style="display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;color:var(--ink);transition:background .15s" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='transparent'">
+            <input type="checkbox" class="ob-state-cb" value="${s}" style="accent-color:var(--teal);width:14px;height:14px;cursor:pointer;flex-shrink:0"/> ${s}
+          </label>`).join("")}
+        </div>
+        <p id="ob-state-count" style="font-size:11px;color:var(--muted);margin-top:8px">0 states selected</p>
+        <p id="ob-state-error" style="display:none;font-size:12px;color:var(--danger);margin-top:6px">Please select at least one state.</p>
       </div>
+
       <!-- Step 4: Title -->
       <div id="ob-step-4" class="ob-step" style="display:none">
         <p style="font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Step 4 of 4</p>
@@ -343,19 +365,66 @@ function showOnboardingModal(clientId,onComplete){
         <div class="input-group"><label class="input-label">Preferred Title Company / Attorney</label><input class="finput" id="ob-title" placeholder="Name and state, or leave blank to use ours"/></div>
         <div style="background:#F0FFF4;border:1px solid #C6F6D5;border-radius:10px;padding:12px 14px;font-size:12px;color:#276749;line-height:1.6">✅ If you leave this blank, CloseFlow TC will coordinate with our vetted title partners on your behalf.</div>
       </div>
+
       <!-- Error message -->
       <div id="ob-error" style="display:none;margin-top:12px;padding:10px 14px;background:#FFF5F5;border:1px solid #FED7D7;border-radius:10px;font-size:12px;color:var(--danger)"></div>
     </div>
+
     <!-- Footer -->
-    <div style="padding:0 32px 28px;display:flex;align-items:center;justify-content:space-between">
+    <div style="padding:16px 32px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-top:1px solid var(--border);margin-top:8px">
       <button id="ob-back" class="btn btn-ghost btn-sm" style="visibility:hidden">← Back</button>
-      <button id="ob-next" class="btn btn-primary" style="min-width:120px;justify-content:center">Next →</button>
+      <button id="ob-next" class="btn btn-primary" style="min-width:140px;justify-content:center">Next →</button>
     </div>
   </div>`;
   document.body.appendChild(el);
 
   let currentStep=1;
   const totalSteps=4;
+
+  // State search filter
+  setTimeout(()=>{
+    const searchInput=document.getElementById("ob-state-search");
+    const stateList=document.getElementById("ob-state-list");
+    if(searchInput&&stateList){
+      searchInput.addEventListener("input",()=>{
+        const v=searchInput.value.toLowerCase();
+        stateList.querySelectorAll("label").forEach(lbl=>{
+          lbl.style.display=lbl.textContent.toLowerCase().includes(v)?"flex":"none";
+        });
+      });
+    }
+    // State checkboxes — update tags + count
+    document.querySelectorAll(".ob-state-cb").forEach(cb=>{
+      cb.addEventListener("change",updateStateTags);
+    });
+    // Comm checkbox labels — highlight on check
+    ["email","phone","text"].forEach(opt=>{
+      const cb=document.getElementById(`ob-comm-${opt}`);
+      const lbl=document.getElementById(`comm-label-${opt}`);
+      if(cb&&lbl){
+        cb.addEventListener("change",()=>{
+          lbl.style.borderColor=cb.checked?"var(--teal)":"var(--border)";
+          lbl.style.background=cb.checked?"var(--teal-mist)":"var(--white)";
+        });
+      }
+    });
+  },100);
+
+  function updateStateTags(){
+    const selected=[...document.querySelectorAll(".ob-state-cb:checked")].map(c=>c.value);
+    const tagsEl=document.getElementById("ob-selected-states");
+    const countEl=document.getElementById("ob-state-count");
+    if(tagsEl)tagsEl.innerHTML=selected.map(s=>`<span style="background:var(--teal-mist);color:var(--teal-dark);border:1px solid var(--teal-light);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">${s}</span>`).join("");
+    if(countEl)countEl.textContent=`${selected.length} state${selected.length===1?"":"s"} selected`;
+  }
+
+  function getSelectedStates(){
+    return[...document.querySelectorAll(".ob-state-cb:checked")].map(c=>c.value);
+  }
+
+  function getSelectedComms(){
+    return[...document.querySelectorAll("input[name='ob-comm']:checked")].map(c=>c.value);
+  }
 
   function updateProgress(){
     const pct=((currentStep-1)/totalSteps)*100;
@@ -380,56 +449,60 @@ function showOnboardingModal(clientId,onComplete){
 
   function validate(){
     const err=document.getElementById("ob-error");
+    const showErr=(msg)=>{if(err){err.style.display="block";err.textContent=msg;}};
     if(currentStep===1){
       const biz=document.getElementById("ob-business")?.value.trim();
-      if(!biz){if(err){err.style.display="block";err.textContent="Please enter your business or entity name.";}return false;}
+      if(!biz){showErr("Please enter your business or entity name.");return false;}
     }
     if(currentStep===2){
       const tz=document.getElementById("ob-timezone")?.value;
-      const comm=document.querySelector("input[name='ob-comm']:checked")?.value;
-      if(!tz){if(err){err.style.display="block";err.textContent="Please select your time zone.";}return false;}
-      if(!comm){if(err){err.style.display="block";err.textContent="Please select your preferred communication method.";}return false;}
+      const comms=getSelectedComms();
+      if(!tz){showErr("Please select your time zone.");return false;}
+      if(!comms.length){showErr("Please select at least one communication preference.");return false;}
     }
     if(currentStep===3){
-      const mkts=document.getElementById("ob-markets")?.value.trim();
-      if(!mkts){if(err){err.style.display="block";err.textContent="Please enter at least one state or market.";}return false;}
+      const states=getSelectedStates();
+      if(!states.length){
+        const se=document.getElementById("ob-state-error");
+        if(se)se.style.display="block";
+        showErr("Please select at least one state.");
+        return false;
+      }
     }
     return true;
   }
 
-  document.getElementById("ob-next").addEventListener("click",async()=>{
+  const nextBtn=document.getElementById("ob-next");
+  const backBtn=document.getElementById("ob-back");
+
+  nextBtn.addEventListener("click",async()=>{
     if(!validate())return;
     if(currentStep<totalSteps){showStep(currentStep+1);return;}
-    // Save to Supabase
+    // Collect all data
     const business_name=document.getElementById("ob-business")?.value.trim()||"";
     const address=document.getElementById("ob-address")?.value.trim()||"";
     const time_zone=document.getElementById("ob-timezone")?.value||"";
-    const comm_preference=document.querySelector("input[name='ob-comm']:checked")?.value||"";
-    const market_radius=document.getElementById("ob-markets")?.value.trim()||"";
+    const comm_preference=getSelectedComms().join(", ");
+    const market_radius=getSelectedStates().join(", ");
     const preferred_title=document.getElementById("ob-title")?.value.trim()||"";
-    const btn=document.getElementById("ob-next");
-    if(btn){btn.textContent="Saving…";btn.disabled=true;}
+    nextBtn.textContent="Saving…";nextBtn.disabled=true;
     await sb.from("clients").update({
       business_name,address,time_zone,comm_preference,
       market_radius,preferred_title,onboarding_complete:true
     }).eq("id",clientId);
-    // Notify admins
     await notifyAdmins(
       SESSION?.client?.name||"New Client",
       "✅ Onboarding Complete",
       `Business: ${business_name} | Markets: ${market_radius} | Timezone: ${time_zone} | Comm: ${comm_preference} | Title Pref: ${preferred_title||"None"}`
     );
-    // Animate completion
     const bar=document.getElementById("ob-progress");
     if(bar)bar.style.width="100%";
-    if(btn){btn.textContent="✓ All set!";btn.style.background="var(--success)";}
+    nextBtn.textContent="✓ All set!";
+    nextBtn.style.background="var(--success)";
     setTimeout(()=>{el.remove();onComplete();},700);
   });
 
-  document.getElementById("ob-back").addEventListener("click",()=>{
-    if(currentStep>1)showStep(currentStep-1);
-  });
-
+  backBtn.addEventListener("click",()=>{if(currentStep>1)showStep(currentStep-1);});
   updateProgress();
 }
 
