@@ -106,8 +106,8 @@ input,select,textarea{font-family:inherit}
 .avatar:hover{transform:scale(1.08)}
 .avatar img{width:100%;height:100%;object-fit:cover}
 
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;animation:fadeIn .2s ease}
-.modal-box{background:var(--white);border-radius:20px;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.15);max-width:520px;width:100%;padding:36px;animation:slideUp .3s cubic-bezier(.34,1.56,.64,1)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;animation:fadeIn .25s cubic-bezier(.4,0,.2,1)}
+.modal-box{background:var(--white);border-radius:20px;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.18);max-width:520px;width:100%;padding:36px;animation:slideUp .35s cubic-bezier(.34,1.56,.64,1)}
 
 .tour-highlight{position:fixed;border-radius:12px;box-shadow:0 0 0 4px var(--teal),0 0 0 9999px rgba(0,0,0,.5);transition:all .4s;z-index:2001;pointer-events:none}
 .tour-tooltip{position:fixed;background:var(--white);border-radius:16px;border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.15);padding:20px 24px;max-width:300px;z-index:2002;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)}
@@ -152,13 +152,20 @@ input,select,textarea{font-family:inherit}
 .kd-line{flex:1;height:3px;background:var(--border);margin-top:-8px}
 .kd-line.done{background:var(--teal)}
 
+/* ── BUTTON SPINNER ── */
+.btn-spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .65s linear infinite;flex-shrink:0;display:inline-block}
+.btn-spinner-dark{width:14px;height:14px;border:2px solid rgba(58,157,181,.3);border-top-color:var(--teal);border-radius:50%;animation:spin .65s linear infinite;flex-shrink:0;display:inline-block}
+
+/* ── SMOOTH TRANSITIONS ── */
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
-@keyframes popIn{0%{transform:scale(.8);opacity:0}70%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+@keyframes slideUp{from{transform:translateY(28px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes slideDown{from{transform:translateY(-16px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes popIn{0%{transform:scale(.88);opacity:0}65%{transform:scale(1.03)}100%{transform:scale(1);opacity:1}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
 .pulse{animation:pulse 2s ease-in-out infinite}
-.fade-in{animation:fadeIn .3s ease}
+.fade-in{animation:fadeIn .35s cubic-bezier(.4,0,.2,1)}
 
 #loading{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1C2B32,#3A9DB5);color:#fff;flex-direction:column;gap:12px;font-size:15px;font-weight:600;letter-spacing:.05em}
 .spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
@@ -404,7 +411,31 @@ function badgeEl(status){const c=STATUS[status]||{bg:"#EDF2F7",text:"#4A5568",do
 function roleBadge(role){const isSA=role==="superadmin";return`<span class="chip" style="background:${isSA?"#FEFCBF":"#EBF8FF"};color:${isSA?"#744210":"#2B6CB0"}">${isSA?"⭐ Super Admin":"👤 Admin"}</span>`;}
 function logoEl(light=false){const tc=light?"#fff":"#1C2B32";const sub=light?"rgba(255,255,255,.5)":"#718096";return`<div style="display:flex;align-items:center;gap:10px"><img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png" style="height:32px;width:auto" alt="CloseFlow TC"/><div><div style="font-size:13px;font-weight:800;color:${tc};letter-spacing:.05em;text-transform:uppercase;line-height:1.1">CloseFlow TC</div><div style="font-size:8px;color:${sub};letter-spacing:.12em;text-transform:uppercase;margin-top:1px">Where Every Closing Flows</div></div></div>`;}
 
-// ── GOOGLE CALENDAR LINK ──────────────────────────────────────────────────────
+// ── BUTTON LOADING STATE ──────────────────────────────────────────────────────
+function btnLoad(id,loading,loadingText="Saving…",doneText=null){
+  const btn=qs(`#${id}`);if(!btn)return;
+  if(loading){
+    btn.disabled=true;
+    btn.dataset.orig=btn.innerHTML;
+    const isDark=btn.classList.contains("btn-primary")||btn.classList.contains("btn-teal");
+    btn.innerHTML=`<span class="${isDark?"btn-spinner":"btn-spinner-dark"}"></span>${loadingText}`;
+    btn.style.opacity=".75";btn.style.transform="none";
+  }else{
+    btn.disabled=false;
+    btn.innerHTML=doneText||btn.dataset.orig||btn.innerHTML;
+    btn.style.opacity="1";
+    if(doneText){setTimeout(()=>{if(btn.dataset.orig)btn.innerHTML=btn.dataset.orig;},1800);}
+  }
+}
+
+// ── COORDINATOR DROPDOWN ──────────────────────────────────────────────────────
+async function buildCoordDropdown(selectedName,id="f-coord"){
+  const{data:admins}=await sb.from("admins").select("name").order("name");
+  const names=(admins||[]).map(a=>a.name);
+  // Always include current value even if not in admins
+  if(selectedName&&!names.includes(selectedName))names.unshift(selectedName);
+  return`<select class="dark-input" id="${id}">${names.map(n=>`<option value="${n}" ${n===selectedName?"selected":""}>${n}</option>`).join("")}</select>`;
+}
 function googleCalLink(label,date,address){
   if(!date)return"#";
   const dt=date.replace(/-/g,"");
@@ -715,6 +746,7 @@ function renderLogin(mode="login",err=""){
 
 async function doLogin(){
   const email=qs("#f-email")?.value.trim(),pass=qs("#f-pass")?.value;
+  btnLoad("do-login",true,"Signing in…");
   const{data:adminData}=await sb.from("admins").select("*").eq("email",email).eq("password",pass).single();
   if(adminData){SESSION={role:"admin",admin:adminData};await checkUpcomingReminders();await renderAdmin();return;}
   const{data,error}=await sb.from("clients").select("*").eq("email",email).eq("password",pass).is("deleted_at",null).single();
@@ -733,6 +765,7 @@ async function doRegister(){
   if(!name||!email||!pass){renderLogin("register","Please fill in all required fields.");return;}
   if(pass!==confirm){renderLogin("register","Passwords don't match.");return;}
   if(code!==INVITE){renderLogin("register","Invalid invite code. Contact your coordinator.");return;}
+  btnLoad("do-reg",true,"Creating account…");
   const{data:exists}=await sb.from("clients").select("id").eq("email",email).is("deleted_at",null).single();
   if(exists){renderLogin("register","An account with this email already exists.");return;}
   const{data:client,error}=await sb.from("clients").insert({name,email,password:pass,phone,address:"",photo_url:"",has_seen_welcome:false,onboarding_complete:false}).select().single();
@@ -741,10 +774,8 @@ async function doRegister(){
   await sb.from("messages").insert({client_id:client.id,from_name:"CloseFlow TC",text:`Welcome, ${name}! Your account is ready. Your coordinator will be in touch shortly.`,date:new Date().toISOString().slice(0,10),is_admin:true});
   SESSION={role:"client",client};
   ACTIVE_FILE_ID=newFile?.id||null;
-  // Render dashboard first, then show onboarding modal on top
   await renderClient(client.id,ACTIVE_FILE_ID,"overview",false,false);
   showOnboardingModal(client.id,async()=>{
-    // Refresh client data after onboarding completes
     const{data:updated}=await sb.from("clients").select("*").eq("id",client.id).single();
     if(updated)SESSION.client=updated;
     await renderClient(client.id,ACTIVE_FILE_ID,"overview",true,false);
@@ -1186,13 +1217,33 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   const ml=qs("#msg-list");if(ml)ml.scrollTop=ml.scrollHeight;
 
-  on("#send-msg","click",async()=>{const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);input.value="";await renderClient(clientId,fileId,"messages");});
+  on("#send-msg","click",async()=>{const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;btnLoad("send-msg",true,"Sending2026");await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);input.value="";await renderClient(clientId,fileId,"messages");});
   on("#msg-input","keydown",async e=>{if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);e.target.value="";await renderClient(clientId,fileId,"messages");});
 
   qsa(".task-check").forEach(el=>{el.addEventListener("click",async()=>{const tid=el.dataset.tid;const done=el.dataset.done==="true";await sb.from("tasks").update({done:!done}).eq("id",tid);await renderClient(clientId,fileId,"tasks");});});
 
-  on("#save-acc","click",async()=>{const name=qs("#acc-name")?.value.trim();const phone=qs("#acc-phone")?.value.trim();const address=qs("#acc-address")?.value.trim();const email=qs("#acc-email")?.value.trim();await sb.from("clients").update({name,phone,address,email}).eq("id",clientId);await notifyAdmins(client.name,"👤 Profile Updated",`Name: ${name} | Phone: ${phone||"—"} | Email: ${email}`);const msg=qs("#acc-msg");if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Profile saved!";}SESSION.client={...SESSION.client,name,phone,address,email};});
-  on("#save-pw","click",async()=>{const curr=qs("#pw-current")?.value;const nw=qs("#pw-new")?.value;const conf=qs("#pw-confirm")?.value;const msg=qs("#pw-msg");if(!curr||!nw||!conf){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in all fields.";}return;}if(curr!==client.password){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Current password is incorrect.";}return;}if(nw!==conf){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Passwords don't match.";}return;}await sb.from("clients").update({password:nw}).eq("id",clientId);if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Password updated!";}SESSION.client={...SESSION.client,password:nw};});
+  on("#save-acc","click",async()=>{
+    const name=qs("#acc-name")?.value.trim();const phone=qs("#acc-phone")?.value.trim();
+    const address=qs("#acc-address")?.value.trim();const email=qs("#acc-email")?.value.trim();
+    btnLoad("save-acc",true,"Saving…");
+    await sb.from("clients").update({name,phone,address,email}).eq("id",clientId);
+    await notifyAdmins(client.name,"👤 Profile Updated",`Name: ${name} | Phone: ${phone||"—"} | Email: ${email}`);
+    btnLoad("save-acc",false,"✓ Saved!","Save Profile");
+    const msg=qs("#acc-msg");if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Profile saved!";}
+    SESSION.client={...SESSION.client,name,phone,address,email};
+  });
+  on("#save-pw","click",async()=>{
+    const curr=qs("#pw-current")?.value;const nw=qs("#pw-new")?.value;const conf=qs("#pw-confirm")?.value;
+    const msg=qs("#pw-msg");
+    if(!curr||!nw||!conf){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in all fields.";}return;}
+    if(curr!==client.password){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Current password is incorrect.";}return;}
+    if(nw!==conf){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Passwords don't match.";}return;}
+    btnLoad("save-pw",true,"Updating…");
+    await sb.from("clients").update({password:nw}).eq("id",clientId);
+    btnLoad("save-pw",false,"✓ Updated!","Update Password");
+    if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Password updated!";}
+    SESSION.client={...SESSION.client,password:nw};
+  });
   on("#photo-file","change",async e=>{const file2=e.target.files[0];if(!file2)return;const reader=new FileReader();reader.onload=async ev=>{await sb.from("clients").update({photo_url:ev.target.result}).eq("id",clientId);await renderClient(clientId,fileId,"account");};reader.readAsDataURL(file2);});
   on("#show-upload-form","click",()=>{const f2=qs("#upload-form");if(f2)f2.style.display="block";const b=qs("#show-upload-form");if(b)b.style.display="none";});
   on("#cancel-upload","click",()=>{const f2=qs("#upload-form");if(f2)f2.style.display="none";const b=qs("#show-upload-form");if(b)b.style.display="block";});
@@ -1201,6 +1252,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     const category=qs("#cdoc-cat")?.value||"Other";const description=qs("#cdoc-desc")?.value.trim()||"";
     const msg=qs("#cdoc-msg");
     if(!name||!url){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in the document name and link.";}return;}
+    btnLoad("submit-cdoc",true,"Submitting…");
     await sb.from("documents").insert({client_id:clientId,file_id:fileId,name,url,category,description,date:new Date().toISOString().slice(0,10),uploaded_by:"client"});
     await notifyAdmins(client.name,"📄 New Document Upload",`"${name}" | Category: ${category} | Property: ${f.address||"TBD"}`);
     if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Document submitted! Your coordinator has been notified.";}
@@ -1443,7 +1495,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <div class="input-group"><label class="input-label">Closing Date</label><input class="dark-input" id="f-closing" type="date" value="${f.closing_date||""}"/></div>
         <div class="input-group"><label class="input-label">Status</label><select class="dark-input" id="f-status">${FILE_STATUSES.map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
         <div class="input-group"><label class="input-label">Milestone</label><select class="dark-input" id="f-milestone">${MILESTONES.map((m,i)=>`<option value="${i}" ${f.milestone===i?"selected":""}>${i+1}. ${m}</option>`).join("")}</select></div>
-        <div class="input-group" style="grid-column:1/-1"><label class="input-label">Coordinator</label><input class="dark-input" id="f-coord" value="${f.coordinator||"Danielle McCarter"}"/></div>
+        <div class="input-group" style="grid-column:1/-1"><label class="input-label">Coordinator</label><div id="coord-dropdown-wrap"><select class="dark-input" id="f-coord"><option value="${f.coordinator||"Danielle McCarter"}">${f.coordinator||"Danielle McCarter"}</option></select></div></div>
       </div>
       <div style="display:flex;gap:10px;margin-top:18px;align-items:center">
         <button class="btn btn-primary" id="save-file">Save Changes</button>
@@ -1634,6 +1686,14 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   // Events
   on("#admin-signout","click",()=>{SESSION=null;renderLogin();});
 
+  // Load coordinator dropdown async
+  if(qs("#coord-dropdown-wrap")){
+    buildCoordDropdown(f.coordinator||"Danielle McCarter","f-coord").then(html=>{
+      const wrap=qs("#coord-dropdown-wrap");
+      if(wrap)wrap.innerHTML=html;
+    });
+  }
+
   // Permissions toggles
   qsa(".perm-toggle").forEach(toggle=>{
     toggle.addEventListener("click",async()=>{
@@ -1743,6 +1803,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   });
 
   on("#save-file","click",async()=>{
+    btnLoad("save-file",true,"Saving…");
     const address=qs("#f-address")?.value||"";
     const closing_date=qs("#f-closing")?.value||"";
     const status=qs("#f-status")?.value||"Pending";
@@ -1750,24 +1811,37 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const coordinator=qs("#f-coord")?.value||"Danielle McCarter";
     const prev=file;
     await sb.from("files").update({address,closing_date,status,milestone,coordinator}).eq("id",activeFileId);
-    // Notify if closing date or status changed
     if(client&&prev){
       if(closing_date&&closing_date!==prev.closing_date){
-        const msg=`Your closing date has been updated to ${fmtDate(closing_date)} — ${address||"your property"}`;
-        await createNotification(activeClientId,activeFileId,msg,"update");
+        const msg2=`Your closing date has been updated to ${fmtDate(closing_date)} — ${address||"your property"}`;
+        await createNotification(activeClientId,activeFileId,msg2,"update");
         await notifyClient(client.email,client.name,"📅 Closing Date Updated",`Your closing date has been updated to ${fmtDate(closing_date)}.`,address);
         await notifyAdmins(client.name,"📅 Closing Date Updated",`Closing date changed to ${fmtDate(closing_date)} for ${client.name} — ${address||"TBD"}`);
       }
       if(status!==prev.status){
-        const msg=`Your file status has been updated to "${status}" — ${address||"your property"}`;
-        await createNotification(activeClientId,activeFileId,msg,"update");
+        const msg2=`Your file status has been updated to "${status}" — ${address||"your property"}`;
+        await createNotification(activeClientId,activeFileId,msg2,"update");
         await notifyClient(client.email,client.name,"📋 File Status Updated",`Your file status has been updated to "${status}".`,address);
       }
     }
+    btnLoad("save-file",false,"✓ Saved!","Save Changes");
     const msg=qs("#save-msg");if(msg){msg.style.display="block";setTimeout(()=>msg.style.display="none",2000);}
   });
-  on("#reset-pw","click",async()=>{const pw=qs("#new-pw")?.value.trim();const msg=qs("#pw-reset-msg");if(!pw){if(msg){msg.style.display="block";msg.style.color="#FC8181";msg.textContent="Please enter a new password.";}return;}await sb.from("clients").update({password:pw}).eq("id",activeClientId);if(msg){msg.style.display="block";msg.style.color="#68D391";msg.textContent="✓ Password reset!";}if(qs("#new-pw"))qs("#new-pw").value="";});
-  on("#add-task","click",async()=>{const text=qs("#task-input")?.value.trim();if(!text)return;await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false});await renderAdmin(activeClientId,activeFileId,"tasks");});
+  on("#reset-pw","click",async()=>{
+    const pw=qs("#new-pw")?.value.trim();const msg=qs("#pw-reset-msg");
+    if(!pw){if(msg){msg.style.display="block";msg.style.color="#FC8181";msg.textContent="Please enter a new password.";}return;}
+    btnLoad("reset-pw",true,"Resetting…");
+    await sb.from("clients").update({password:pw}).eq("id",activeClientId);
+    if(msg){msg.style.display="block";msg.style.color="#68D391";msg.textContent="✓ Password reset!";}
+    if(qs("#new-pw"))qs("#new-pw").value="";
+    btnLoad("reset-pw",false,"✓ Done","Reset");
+  });
+  on("#add-task","click",async()=>{
+    const text=qs("#task-input")?.value.trim();if(!text)return;
+    btnLoad("add-task",true,"Adding…");
+    await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false});
+    await renderAdmin(activeClientId,activeFileId,"tasks");
+  });
   on("#task-input","keydown",async e=>{if(e.key==="Enter"){const text=e.target.value.trim();if(!text)return;await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false});await renderAdmin(activeClientId,activeFileId,"tasks");}});
   qsa(".del-task").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("tasks").delete().eq("id",btn.dataset.tid);await renderAdmin(activeClientId,activeFileId,"tasks");}));
   // Admin notification bell
@@ -1810,25 +1884,55 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const label=qs("#date-label")?.value.trim();
     const date=qs("#date-val")?.value;
     if(!label||!date)return;
+    btnLoad("add-date",true,"Adding…");
     await sb.from("key_dates").insert({client_id:activeClientId,file_id:activeFileId,label,date});
-    // Notify both sides immediately
     if(client){
-      const msg=`New key date added: "${label}" on ${fmtDate(date)} — ${f.address||"your property"}`;
-      await createNotification(activeClientId,activeFileId,msg,"update");
+      const msg2=`New key date added: "${label}" on ${fmtDate(date)} — ${f.address||"your property"}`;
+      await createNotification(activeClientId,activeFileId,msg2,"update");
       await notifyClient(client.email,client.name,"📅 New Key Date Added",`A new key date has been added: "${label}" on ${fmtDate(date)}.`,f.address);
       await notifyAdmins(client.name,"📅 Key Date Added",`"${label}" on ${fmtDate(date)} added for ${client.name} — ${f.address||"TBD"}`);
     }
     await renderAdmin(activeClientId,activeFileId,"dates");
   });
   qsa(".del-date").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("key_dates").delete().eq("id",btn.dataset.did);await renderAdmin(activeClientId,activeFileId,"dates");}));
-  on("#add-contact","click",async()=>{const role=qs("#c-role")?.value.trim();const name=qs("#c-name")?.value.trim();const phone=qs("#c-phone")?.value.trim();const email=qs("#c-email")?.value.trim();if(!role||!name)return;await sb.from("contacts").insert({client_id:activeClientId,file_id:activeFileId,role,name,phone,email});await renderAdmin(activeClientId,activeFileId,"contacts");});
+  on("#add-contact","click",async()=>{
+    const role=qs("#c-role")?.value.trim();const name=qs("#c-name")?.value.trim();
+    const phone=qs("#c-phone")?.value.trim();const email=qs("#c-email")?.value.trim();
+    if(!role||!name)return;
+    btnLoad("add-contact",true,"Adding…");
+    await sb.from("contacts").insert({client_id:activeClientId,file_id:activeFileId,role,name,phone,email});
+    await renderAdmin(activeClientId,activeFileId,"contacts");
+  });
   qsa(".del-contact").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("contacts").delete().eq("id",btn.dataset.coid);await renderAdmin(activeClientId,activeFileId,"contacts");}));
-  on("#add-doc","click",async()=>{const name=qs("#doc-name")?.value.trim();const url=qs("#doc-url")?.value.trim();const category=qs("#doc-cat")?.value.trim()||"General";if(!name||!url)return;await sb.from("documents").insert({client_id:activeClientId,file_id:activeFileId,name,url,category,date:new Date().toISOString().slice(0,10)});await renderAdmin(activeClientId,activeFileId,"documents");});
+  on("#add-doc","click",async()=>{
+    const name=qs("#doc-name")?.value.trim();const url=qs("#doc-url")?.value.trim();
+    const category=qs("#doc-cat")?.value.trim()||"General";
+    if(!name||!url)return;
+    btnLoad("add-doc",true,"Adding…");
+    await sb.from("documents").insert({client_id:activeClientId,file_id:activeFileId,name,url,category,date:new Date().toISOString().slice(0,10)});
+    await renderAdmin(activeClientId,activeFileId,"documents");
+  });
   qsa(".del-doc").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("documents").delete().eq("id",btn.dataset.docid);await renderAdmin(activeClientId,activeFileId,"documents");}));
-  on("#admin-send","click",async()=>{const input=qs("#admin-msg");const text=input?.value.trim();if(!text)return;await sb.from("messages").insert({client_id:activeClientId,from_name:"CloseFlow TC",text,date:new Date().toISOString().slice(0,10),is_admin:true});input.value="";await renderAdmin(activeClientId,activeFileId,"messages");});
+  on("#admin-send","click",async()=>{
+    const input=qs("#admin-msg");const text=input?.value.trim();if(!text)return;
+    btnLoad("admin-send",true,"Sending…");
+    await sb.from("messages").insert({client_id:activeClientId,from_name:"CloseFlow TC",text,date:new Date().toISOString().slice(0,10),is_admin:true});
+    input.value="";await renderAdmin(activeClientId,activeFileId,"messages");
+  });
   on("#admin-msg","keydown",async e=>{if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:activeClientId,from_name:"CloseFlow TC",text,date:new Date().toISOString().slice(0,10),is_admin:true});e.target.value="";await renderAdmin(activeClientId,activeFileId,"messages");});
   const aml=qs("#admin-msg-list");if(aml)aml.scrollTop=aml.scrollHeight;
-  on("#add-admin","click",async()=>{const name=qs("#new-admin-name")?.value.trim();const email=qs("#new-admin-email")?.value.trim();const pass=qs("#new-admin-pass")?.value;const role=qs("#new-admin-role")?.value||"admin";const msg=qs("#team-msg");if(!name||!email||!pass){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in all fields.";}return;}const{data:exists}=await sb.from("admins").select("id").eq("email",email).single();if(exists){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="An admin with this email already exists.";}return;}const{error}=await sb.from("admins").insert({name,email,password:pass,role});if(error){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Something went wrong.";}return;}await renderAdmin(null,null,"team");});
+  on("#add-admin","click",async()=>{
+    const name=qs("#new-admin-name")?.value.trim();const email=qs("#new-admin-email")?.value.trim();
+    const pass=qs("#new-admin-pass")?.value;const role=qs("#new-admin-role")?.value||"admin";
+    const msg=qs("#team-msg");
+    if(!name||!email||!pass){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in all fields.";}return;}
+    const{data:exists}=await sb.from("admins").select("id").eq("email",email).single();
+    if(exists){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="An admin with this email already exists.";}return;}
+    btnLoad("add-admin",true,"Adding…");
+    const{error}=await sb.from("admins").insert({name,email,password:pass,role});
+    if(error){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Something went wrong.";}btnLoad("add-admin",false,null,"Add Team Member");return;}
+    await renderAdmin(null,null,"team");
+  });
   qsa(".role-select").forEach(sel=>sel.addEventListener("change",async()=>{await sb.from("admins").update({role:sel.value}).eq("id",sel.dataset.aid);await renderAdmin(null,null,"team");}));
   qsa(".del-admin").forEach(btn=>btn.addEventListener("click",async()=>{if(!confirm("Remove this team member?"))return;await sb.from("admins").delete().eq("id",btn.dataset.aid);await renderAdmin(null,null,"team");}));
 }
