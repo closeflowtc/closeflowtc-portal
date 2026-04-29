@@ -246,18 +246,152 @@ const STATUS={
   Closed:{bg:"#BEE3F8",text:"#2A4365",dot:"#3182CE"},
 };
 const TOUR_STEPS=[
-  {tab:"overview",title:"Your Overview",desc:"File status, progress and what's happening next — all at a glance."},
-  {tab:"dates",title:"Key Dates",desc:"All your deadlines, color coded by urgency. Sync to your calendar anytime."},
-  {tab:"tasks",title:"My Tasks",desc:"Things your coordinator needs you to complete. Check them off as you go."},
-  {tab:"contacts",title:"Key Contacts",desc:"Everyone involved in your closing — title, lender, and more."},
-  {tab:"milestones",title:"Milestones",desc:"Track every step from contract to close."},
-  {tab:"documents",title:"Documents",desc:"All your files organized by category."},
-  {tab:"messages",title:"Messages",desc:"Chat directly with your coordinator anytime."},
-  {tab:"account",title:"My Account",desc:"Update your profile, photo, and password."},
+  {
+    tab:"overview",icon:"🏠",
+    title:"Welcome to Your Portal",
+    body:"This is your personal closing hub — built just for you by CloseFlow TC. Everything about your real estate transaction lives here, and your CloseFlow TC coordinator keeps it updated every step of the way. You do not need to be a tech expert to use this portal. It was designed to be simple and clear.",
+    action:"Take a moment to look at your dashboard. You will see your property address, your file status, and how far along your closing is right now.",
+    video:null,
+  },
+  {
+    tab:"overview",icon:"📊",
+    title:"Your Closing Progress",
+    body:"The progress bar on your dashboard shows exactly where your closing stands right now. Each step — from Deal Submitted all the way to Closed — is tracked here automatically by your CloseFlow TC coordinator. You do not need to do anything to update it.",
+    action:"Look at the bar that shows how many steps are complete. That is your current milestone. If you have questions about what any step means, send your CloseFlow TC coordinator a message anytime.",
+    video:null,
+  },
+  {
+    tab:"dates",icon:"📅",
+    title:"Your Key Dates",
+    body:"Every important deadline in your closing is listed here — things like your Earnest Money Deposit due date, your title order, and your target closing date. Your CloseFlow TC coordinator adds these for you and updates them if anything changes. You will receive an email notification any time a date is added or updated.",
+    action:"Look for the teal button that says 'Add to Calendar' next to each date. Clicking it will open Google Calendar with that date already filled in for you — just click Save to add it to your calendar.",
+    video:null,
+  },
+  {
+    tab:"tasks",icon:"✅",
+    title:"Your Tasks",
+    body:"Sometimes your CloseFlow TC coordinator will need something from you — a signature, a document, or a simple confirmation. When that happens, a task will appear here with a clear description of what is needed. Completing your tasks on time helps keep your closing on track and prevents delays.",
+    action:"If you see any tasks listed here, read each one carefully. When you have completed a task, click the small checkbox on the left side of it to mark it as done. Your coordinator will be notified.",
+    video:null,
+  },
+  {
+    tab:"documents",icon:"📁",
+    title:"Your Documents",
+    body:"All the important paperwork for your closing is stored here — contracts, title documents, closing statements, and more. Your CloseFlow TC coordinator uploads these for you as they become available. You can also upload documents here if your coordinator asks you to provide something.",
+    action:"Click the green 'Upload Document' button at the top to upload a file. You will need a Google Drive link to your document. If you are unsure how to do this, message your CloseFlow TC coordinator and they will walk you through it.",
+    video:null,
+  },
+  {
+    tab:"messages",icon:"💬",
+    title:"Your Messages",
+    body:"You can reach your CloseFlow TC coordinator directly through this portal at any time — no need to search for a phone number or email address. Just type your message and send it. Your coordinator will respond within one business day. All messages are saved here so nothing gets lost.",
+    action:"Type a quick hello to your coordinator in the message box below to let them know you have finished the tour. They will be happy to hear from you and answer any questions you have.",
+    video:null,
+  },
 ];
 let SESSION=null,TOUR_ACTIVE=false,TOUR_STEP=0,TOUR_CLIENT_ID=null,ACTIVE_FILE_ID=null;
 const app=document.getElementById("app");
 const loading=document.getElementById("loading");
+
+function startTour(clientId,renderFn){
+  TOUR_ACTIVE=true;TOUR_STEP=0;TOUR_CLIENT_ID=clientId;
+  renderFn(clientId,ACTIVE_FILE_ID,TOUR_STEPS[0].tab,false,true);
+}
+
+function renderTourOverlay(step,total,renderFn){
+  document.getElementById("tour-overlay")?.remove();
+  document.getElementById("tour-tooltip")?.remove();
+  const s=TOUR_STEPS[step];
+
+  // Dim backdrop
+  const backdrop=document.createElement("div");
+  backdrop.id="tour-overlay";
+  backdrop.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);z-index:2000;pointer-events:none";
+  // Highlight nav button
+  const navBtns=document.querySelectorAll(".client-nav-btn");
+  const activeBtn=Array.from(navBtns).find(b=>b.dataset.tab===s.tab);
+  if(activeBtn){
+    const r=activeBtn.getBoundingClientRect();
+    const hl=document.createElement("div");
+    hl.style.cssText=`position:fixed;top:${r.top-4}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+8}px;border-radius:12px;box-shadow:0 0 0 4px var(--teal);pointer-events:none;z-index:2001`;
+    backdrop.appendChild(hl);
+  }
+  document.body.appendChild(backdrop);
+
+  // Tooltip card — large, centered, readable
+  const tooltip=document.createElement("div");
+  tooltip.id="tour-tooltip";
+  tooltip.style.cssText="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2002;pointer-events:all;width:100%;max-width:540px;padding:0 16px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)";
+  tooltip.innerHTML=`
+  <div style="background:var(--white);border-radius:24px;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:hidden">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#1C2B32,#2D4A5A,#3A9DB5);padding:22px 24px 18px;display:flex;align-items:center;gap:14px">
+      <div style="width:50px;height:50px;border-radius:14px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">${s.icon}</div>
+      <div style="flex:1">
+        <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step ${step+1} of ${total}</p>
+        <h3 style="font-size:19px;font-weight:900;color:#fff;line-height:1.2">${s.title}</h3>
+      </div>
+      <button id="end-tour" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:34px;height:34px;border-radius:8px;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1;transition:background .2s" onmouseover="this.style.background='rgba(255,255,255,.2)'" onmouseout="this.style.background='rgba(255,255,255,.12)'">×</button>
+    </div>
+    <!-- Progress bar -->
+    <div style="display:flex;gap:4px;padding:14px 24px 0">
+      ${TOUR_STEPS.map((_,i)=>`<div style="height:4px;border-radius:50px;background:${i===step?"var(--teal)":i<step?"var(--teal-light)":"var(--border)"};flex:${i===step?2:1};transition:all .3s"></div>`).join("")}
+    </div>
+    <!-- Body -->
+    <div style="padding:18px 24px 0">
+      <p style="font-size:14px;color:var(--ink);line-height:1.8;margin-bottom:16px">${s.body}</p>
+      <!-- What to do now -->
+      <div style="background:var(--teal-mist);border-left:4px solid var(--teal);border-radius:0 12px 12px 0;padding:14px 16px;margin-bottom:16px">
+        <p style="font-size:11px;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">👉 What to do now</p>
+        <p style="font-size:13px;color:var(--ink);line-height:1.7">${s.action}</p>
+      </div>
+      <!-- Video placeholder -->
+      <div style="background:var(--main-bg);border:1.5px dashed var(--border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px">
+        <div style="width:36px;height:36px;border-radius:10px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🎬</div>
+        <div>
+          <p style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:2px">Walkthrough video coming soon</p>
+          <p style="font-size:11px;color:var(--muted)">Your CloseFlow TC coordinator will record a short video guide for this section.</p>
+        </div>
+      </div>
+    </div>
+    <!-- Footer -->
+    <div style="padding:16px 24px 22px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);margin-top:16px">
+      <button id="tour-back" class="btn btn-ghost btn-sm" style="visibility:${step>0?"visible":"hidden"}">← Back</button>
+      <p style="font-size:12px;color:var(--muted);font-weight:500">${step+1} of ${total}</p>
+      ${step<total-1
+        ?`<button id="tour-next" class="btn btn-primary btn-sm">Next Step →</button>`
+        :`<button id="tour-done" class="btn btn-teal btn-sm">Finish Tour 🎉</button>`}
+    </div>
+  </div>`;
+  document.body.appendChild(tooltip);
+
+  function cleanUp(){
+    document.getElementById("tour-overlay")?.remove();
+    document.getElementById("tour-tooltip")?.remove();
+  }
+  document.getElementById("end-tour")?.addEventListener("click",()=>{TOUR_ACTIVE=false;cleanUp();});
+  document.getElementById("tour-next")?.addEventListener("click",()=>{
+    TOUR_STEP++;cleanUp();
+    renderFn(TOUR_CLIENT_ID,ACTIVE_FILE_ID,TOUR_STEPS[TOUR_STEP].tab,false,true);
+  });
+  document.getElementById("tour-back")?.addEventListener("click",()=>{
+    TOUR_STEP--;cleanUp();
+    renderFn(TOUR_CLIENT_ID,ACTIVE_FILE_ID,TOUR_STEPS[TOUR_STEP].tab,false,true);
+  });
+  document.getElementById("tour-done")?.addEventListener("click",()=>{
+    TOUR_ACTIVE=false;cleanUp();
+    const c=document.createElement("div");
+    c.style.cssText="position:fixed;inset:0;pointer-events:none;z-index:3000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px";
+    c.innerHTML=`
+      <div style="font-size:80px;animation:popIn .5s cubic-bezier(.34,1.56,.64,1)">🎉</div>
+      <div style="background:var(--white);border-radius:16px;padding:18px 28px;box-shadow:0 8px 32px rgba(0,0,0,.2);text-align:center;animation:slideUp .4s ease">
+        <p style="font-weight:900;font-size:17px;color:var(--ink);margin-bottom:5px">You are all set!</p>
+        <p style="font-size:13px;color:var(--muted)">Your CloseFlow TC coordinator is ready when you are.</p>
+      </div>`;
+    document.body.appendChild(c);
+    setTimeout(()=>c.remove(),3000);
+  });
+}
 function show(html){app.innerHTML=html;app.style.display="block";loading.style.display="none";}
 function qs(s){return document.querySelector(s);}
 function qsa(s){return document.querySelectorAll(s);}
@@ -528,38 +662,6 @@ function showWelcomeModal(clientName,clientId,onSkip,onTour){
 }
 
 // ── TOUR ──────────────────────────────────────────────────────────────────────
-function startTour(clientId,renderFn){TOUR_ACTIVE=true;TOUR_STEP=0;TOUR_CLIENT_ID=clientId;renderFn(clientId,ACTIVE_FILE_ID,TOUR_STEPS[0].tab,true);}
-function renderTourOverlay(step,total,renderFn){
-  const ex=document.getElementById("tour-overlay");if(ex)ex.remove();
-  const s=TOUR_STEPS[step];
-  const navBtns=document.querySelectorAll(".client-nav-btn");
-  const activeBtn=Array.from(navBtns).find(b=>b.dataset.tab===s.tab);
-  let hStyle="display:none";
-  if(activeBtn){const r=activeBtn.getBoundingClientRect();hStyle=`top:${r.top-4}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+8}px`;}
-  const el=document.createElement("div");el.id="tour-overlay";el.style.cssText="position:fixed;inset:0;z-index:2000;pointer-events:none";
-  el.innerHTML=`<div class="tour-highlight" style="${hStyle}"></div>
-  <div class="tour-tooltip" style="bottom:80px;left:50%;transform:translateX(-50%)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <span style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Step ${step+1} of ${total}</span>
-      <button id="end-tour" style="background:none;border:none;color:var(--muted);font-size:20px;padding:0;cursor:pointer">×</button>
-    </div>
-    <h3 style="font-size:15px;font-weight:800;color:var(--ink);margin-bottom:6px">${s.title}</h3>
-    <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">${s.desc}</p>
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <div style="display:flex;gap:5px">${TOUR_STEPS.map((_,i)=>`<div style="width:${i===step?"20px":"8px"};height:8px;border-radius:50px;background:${i===step?"var(--teal)":"var(--border)"}"></div>`).join("")}</div>
-      <div style="display:flex;gap:8px">
-        ${step>0?`<button class="btn btn-ghost btn-sm" id="tour-back">← Back</button>`:""}
-        ${step<total-1?`<button class="btn btn-primary btn-sm" id="tour-next">Next →</button>`:`<button class="btn btn-teal btn-sm" id="tour-done">Finish 🎉</button>`}
-      </div>
-    </div>
-  </div>`;
-  document.body.appendChild(el);
-  document.getElementById("end-tour")?.addEventListener("click",()=>{TOUR_ACTIVE=false;el.remove();});
-  document.getElementById("tour-next")?.addEventListener("click",()=>{TOUR_STEP++;el.remove();renderFn(TOUR_CLIENT_ID,ACTIVE_FILE_ID,TOUR_STEPS[TOUR_STEP].tab,false,true);});
-  document.getElementById("tour-back")?.addEventListener("click",()=>{TOUR_STEP--;el.remove();renderFn(TOUR_CLIENT_ID,ACTIVE_FILE_ID,TOUR_STEPS[TOUR_STEP].tab,false,true);});
-  document.getElementById("tour-done")?.addEventListener("click",()=>{TOUR_ACTIVE=false;el.remove();const c=document.createElement("div");c.style.cssText="position:fixed;inset:0;pointer-events:none;z-index:3000;display:flex;align-items:center;justify-content:center";c.innerHTML=`<div style="font-size:80px;animation:popIn .5s cubic-bezier(.34,1.56,.64,1)">🎉</div>`;document.body.appendChild(c);setTimeout(()=>c.remove(),1500);});
-}
-
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 function renderLogin(mode="login",err=""){
   show(`<div style="display:flex;min-height:100vh">
@@ -1588,7 +1690,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       <div style="text-align:center;margin-bottom:20px">
         <div style="width:56px;height:56px;border-radius:50%;background:#FFF5F5;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px">🗑</div>
         <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:8px">Delete ${cname||"this client"}?</h3>
-        <p style="font-size:13px;color:var(--muted);line-height:1.6">This will archive the client and hide them from the portal. Their data is preserved and can be restored by contacting support.</p>
+        <p style="font-size:13px;color:var(--muted);line-height:1.6">This will permanently delete the client and all their data — files, documents, tasks, messages, and dates. This cannot be undone.</p>
       </div>
       <div style="display:flex;gap:10px;justify-content:center">
         <button id="cancel-delete" class="btn btn-ghost">Cancel</button>
@@ -1598,7 +1700,19 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     document.body.appendChild(overlay);
     overlay.querySelector("#cancel-delete").addEventListener("click",()=>overlay.remove());
     overlay.querySelector("#confirm-delete").addEventListener("click",async()=>{
-      await sb.from("clients").update({deleted_at:new Date().toISOString()}).eq("id",cid);
+      // Hard delete — remove all related data first, then client
+      const{data:clientFiles}=await sb.from("files").select("id").eq("client_id",cid);
+      const fileIds=(clientFiles||[]).map(f=>f.id);
+      if(fileIds.length){
+        await sb.from("tasks").delete().in("file_id",fileIds);
+        await sb.from("key_dates").delete().in("file_id",fileIds);
+        await sb.from("contacts").delete().in("file_id",fileIds);
+        await sb.from("documents").delete().in("file_id",fileIds);
+      }
+      await sb.from("files").delete().eq("client_id",cid);
+      await sb.from("messages").delete().eq("client_id",cid);
+      await sb.from("notifications").delete().eq("client_id",cid);
+      await sb.from("clients").delete().eq("id",cid);
       overlay.remove();
       await renderAdmin(null,null,"overview");
     });
