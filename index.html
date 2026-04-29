@@ -996,46 +996,124 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   }
 
   else if(tab==="tasks"){
-    const tl=tasks||[];const pending2=tl.filter(t=>!t.done);const done2=tl.filter(t=>t.done);
+    const tl=tasks||[];
+    const activeTasks=tl.filter(t=>t.status!=="complete");
+    const doneTasks2=tl.filter(t=>t.status==="complete");
     content=`<div class="card card-pad">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <p style="font-weight:700;font-size:16px;color:var(--ink)">✅ My Tasks</p>
-        <span class="chip" style="background:var(--teal-mist);color:var(--teal)">${doneTasks}/${allTasks.length} complete</span>
+        <span class="chip" style="background:var(--teal-mist);color:var(--teal)">${doneTasks2.length}/${tl.length} complete</span>
       </div>
-      ${allTasks.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">✅</p><p style="font-weight:600">No tasks assigned yet.</p></div>`:""}
-      ${pending2.map(t=>`<div class="task-item"><div class="task-check" data-tid="${t.id}" data-done="false"></div><p style="font-size:14px;color:var(--ink);flex:1">${t.text}</p></div>`).join("")}
-      ${done2.length>0?`<p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px">Completed</p>`:""}
-      ${done2.map(t=>`<div class="task-item" style="opacity:.55"><div class="task-check done" data-tid="${t.id}" data-done="true"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div><p style="font-size:14px;color:var(--muted);text-decoration:line-through;flex:1">${t.text}</p></div>`).join("")}
+      ${tl.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">✅</p><p style="font-weight:600">No tasks assigned yet. Your coordinator will add tasks here as your closing progresses.</p></div>`:""}
+      ${activeTasks.map(t=>{
+        const isPendingReview=t.status==="pending_review";
+        const hasUpload=t.doc_url&&t.doc_url.length>0;
+        return`<div class="task-item" style="flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px" id="task-wrap-${t.id}">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <div class="task-check ${isPendingReview||hasUpload?"":""}${t.status==="complete"?"done":""}" data-tid="${t.id}" style="margin-top:2px;flex-shrink:0">
+              ${t.status==="complete"?`<svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`:""}
+            </div>
+            <div style="flex:1;min-width:0">
+              <p style="font-size:14px;color:var(--ink);font-weight:600;margin-bottom:6px">${t.text}</p>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                ${taskStatusBadge(t.status||"pending")}
+                ${hasUpload?`<a href="${t.doc_url}" target="_blank" style="font-size:11px;color:var(--teal);font-weight:600">📎 ${t.doc_name||"View upload"}</a>`:""}
+              </div>
+            </div>
+          </div>
+          ${isPendingReview?`
+          <div style="background:#FAF5FF;border:1px solid #E9D8FD;border-radius:10px;padding:10px 14px;font-size:12px;color:#553C9A;line-height:1.6">
+            ✅ Your document has been received. Your CloseFlow TC coordinator is reviewing it. You will be notified when it is approved.
+          </div>`:""}
+          ${!hasUpload&&t.status==="pending"?`
+          <div style="background:var(--teal-mist);border-radius:10px;padding:12px 14px;border:1px solid var(--teal-light)">
+            <p style="font-size:12px;font-weight:700;color:var(--teal-dark);margin-bottom:8px">📎 This task requires a document upload</p>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input class="finput task-doc-url" data-tid="${t.id}" placeholder="Paste your Google Drive link here" style="flex:1;min-width:200px;font-size:12px;padding:8px 12px"/>
+              <input class="finput task-doc-name" data-tid="${t.id}" placeholder="Document name" style="width:160px;font-size:12px;padding:8px 12px"/>
+              <button class="btn btn-teal btn-sm task-upload-btn" data-tid="${t.id}" style="flex-shrink:0">Submit</button>
+            </div>
+            <p style="font-size:11px;color:var(--muted);margin-top:6px">Share your document via Google Drive and paste the link above. Your coordinator will review it.</p>
+          </div>`:""}
+        </div>`;
+      }).join("")}
+      ${doneTasks2.length>0?`
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Completed</p>
+          ${doneTasks2.map(t=>`<div class="task-item" style="opacity:.55">
+            <div class="task-check done"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
+            <p style="font-size:14px;color:var(--muted);text-decoration:line-through;flex:1">${t.text}</p>
+            ${taskStatusBadge("complete")}
+          </div>`).join("")}
+        </div>`:""}
     </div>`;
   }
 
   else if(tab==="contacts"){
     const cl=contacts||[];
-    content=`<div class="card card-pad">
-      <p style="font-weight:700;font-size:16px;color:var(--ink);margin-bottom:16px">🏢 Key Contacts</p>
-      <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">CloseFlow TC Team</p>
-      <div class="contact-card">
+    const cfTeam=cl.filter(c=>c.contact_type==="closeflow_team");
+    const authSigners=cl.filter(c=>c.contact_type==="authorized_signer");
+    const otherContacts=cl.filter(c=>c.contact_type==="other"||!c.contact_type);
+    function contactCard(c,icon="🏢",bgColor="var(--teal-mist)"){
+      return`<div class="contact-card">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-          <div style="width:38px;height:38px;border-radius:10px;background:var(--teal-mist);display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>
-          <div><p style="font-weight:700;font-size:14px;color:var(--ink)">${f.coordinator}</p><p style="font-size:11px;color:var(--muted)">Your Coordinator</p></div>
-        </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap">
-          <a href="tel:3305834443" style="color:var(--teal);font-size:13px;font-weight:600">📞 (330) 583-4443</a>
-          <a href="mailto:info@closeflowtc.com" style="color:var(--teal);font-size:13px;font-weight:600">✉ info@closeflowtc.com</a>
-        </div>
-      </div>
-      ${cl.length>0?`<p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px">Additional Contacts</p>`:""}
-      ${cl.length===0?`<p style="color:var(--muted);font-size:13px;margin-top:8px">Additional contacts will be added by your coordinator.</p>`
-      :cl.map(c=>`<div class="contact-card">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-          <div style="width:38px;height:38px;border-radius:10px;background:var(--teal-mist);display:flex;align-items:center;justify-content:center;font-size:18px">🏢</div>
-          <div><p style="font-weight:700;font-size:14px;color:var(--ink)">${c.name}</p><p style="font-size:11px;color:var(--muted)">${c.role}</p></div>
+          <div style="width:38px;height:38px;border-radius:10px;background:${bgColor};display:flex;align-items:center;justify-content:center;font-size:18px">${icon}</div>
+          <div>
+            <p style="font-weight:700;font-size:14px;color:var(--ink)">${c.name}</p>
+            <p style="font-size:11px;color:var(--muted)">${c.role}</p>
+          </div>
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap">
           ${c.phone?`<a href="tel:${c.phone}" style="color:var(--teal);font-size:13px;font-weight:600">📞 ${c.phone}</a>`:""}
           ${c.email?`<a href="mailto:${c.email}" style="color:var(--teal);font-size:13px;font-weight:600">✉ ${c.email}</a>`:""}
         </div>
-      </div>`).join("")}
+      </div>`;
+    }
+    content=`<div style="display:grid;gap:16px">
+      <!-- CloseFlow TC Team -->
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:8px;background:var(--teal-mist);display:flex;align-items:center;justify-content:center;font-size:16px">🏢</div>
+          <p style="font-weight:700;font-size:15px;color:var(--ink)">CloseFlow TC Team</p>
+        </div>
+        <!-- Coordinator always shown -->
+        <div class="contact-card" style="border-left:3px solid var(--teal)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <div style="width:38px;height:38px;border-radius:10px;background:var(--teal-mist);display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>
+            <div>
+              <p style="font-weight:700;font-size:14px;color:var(--ink)">${f.coordinator}</p>
+              <p style="font-size:11px;color:var(--teal);font-weight:600">Your Coordinator</p>
+            </div>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <a href="tel:3305834443" style="color:var(--teal);font-size:13px;font-weight:600">📞 (330) 583-4443</a>
+            <a href="mailto:info@closeflowtc.com" style="color:var(--teal);font-size:13px;font-weight:600">✉ info@closeflowtc.com</a>
+          </div>
+        </div>
+        ${cfTeam.map(c=>contactCard(c,"👤","var(--teal-mist)")).join("")}
+      </div>
+      <!-- Authorized Signers -->
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:8px;background:#FAF5FF;display:flex;align-items:center;justify-content:center;font-size:16px">✍️</div>
+          <div>
+            <p style="font-weight:700;font-size:15px;color:var(--ink)">Authorized Signers</p>
+            <p style="font-size:11px;color:var(--muted);margin-top:1px">Individuals authorized to sign documents on behalf of your entity</p>
+          </div>
+        </div>
+        ${authSigners.length===0
+          ?`<p style="font-size:13px;color:var(--muted)">No authorized signers on file. Contact your coordinator to add them.</p>`
+          :authSigners.map(c=>contactCard(c,"✍️","#FAF5FF")).join("")}
+      </div>
+      <!-- Other Contacts -->
+      ${otherContacts.length>0?`
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:8px;background:#FEFCBF;display:flex;align-items:center;justify-content:center;font-size:16px">🤝</div>
+          <p style="font-weight:700;font-size:15px;color:var(--ink)">Other Contacts</p>
+        </div>
+        ${otherContacts.map(c=>contactCard(c,"🤝","#FEFCBF")).join("")}
+      </div>`:""}
     </div>`;
   }
 
@@ -1290,10 +1368,28 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   const ml=qs("#msg-list");if(ml)ml.scrollTop=ml.scrollHeight;
 
-  on("#send-msg","click",async()=>{const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;btnLoad("send-msg",true,"Sending2026");await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);input.value="";await renderClient(clientId,fileId,"messages");});
+  on("#send-msg","click",async()=>{const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;btnLoad("send-msg",true,"Sending…");await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);input.value="";await renderClient(clientId,fileId,"messages");});
   on("#msg-input","keydown",async e=>{if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);e.target.value="";await renderClient(clientId,fileId,"messages");});
 
-  qsa(".task-check").forEach(el=>{el.addEventListener("click",async()=>{const tid=el.dataset.tid;const done=el.dataset.done==="true";await sb.from("tasks").update({done:!done}).eq("id",tid);await renderClient(clientId,fileId,"tasks");});});
+  // Task upload submit buttons (client side)
+  qsa(".task-upload-btn").forEach(btn=>{
+    btn.addEventListener("click",async()=>{
+      const tid=btn.dataset.tid;
+      const urlInput=document.querySelector(`.task-doc-url[data-tid="${tid}"]`);
+      const nameInput=document.querySelector(`.task-doc-name[data-tid="${tid}"]`);
+      const url=urlInput?.value.trim();
+      const name=nameInput?.value.trim()||"Document";
+      if(!url){urlInput?.focus();return;}
+      btn.disabled=true;btn.textContent="Submitting…";
+      await sb.from("tasks").update({
+        doc_url:url,doc_name:name,
+        status:"pending_review",done:false
+      }).eq("id",tid);
+      await notifyAdmins(client.name,"📎 Task Document Uploaded",`Task document submitted for review. Document: "${name}" | Task: "${tasks?.find(t=>t.id===tid)?.text||""}"`);
+      await createNotification(clientId,fileId,`Your document has been received and is pending review by your CloseFlow TC coordinator.`,"info");
+      await renderClient(clientId,fileId,"tasks");
+    });
+  });
 
   on("#save-acc","click",async()=>{
     const name=qs("#acc-name")?.value.trim();const phone=qs("#acc-phone")?.value.trim();
@@ -1640,11 +1736,71 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
   else if(tab==="tasks"&&client){
     const tl=tasks||[];
+    const pendingReview=tl.filter(t=>t.status==="pending_review");
+    const activeTasks2=tl.filter(t=>t.status!=="complete"&&t.status!=="pending_review");
+    const completeTasks2=tl.filter(t=>t.status==="complete");
     mainContent=`<div class="admin-card">
-      <p style="font-weight:800;font-size:16px;color:var(--ink);margin-bottom:16px">Client Tasks</p>
-      <div style="display:flex;gap:8px;margin-bottom:18px"><input class="dark-input" id="task-input" placeholder="Add a task for the client…" style="flex:1"/><button class="btn btn-primary btn-sm" id="add-task">+ Add</button></div>
-      ${tl.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">✅</p><p>No tasks yet.</p></div>`
-      :tl.map(t=>`<div class="admin-row" style="cursor:default"><div style="width:18px;height:18px;border-radius:5px;border:2px solid ${t.done?"var(--teal)":"var(--border)"};background:${t.done?"var(--teal)":"transparent"};display:flex;align-items:center;justify-content:center;flex-shrink:0">${t.done?`<svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`:""}</div><p style="flex:1;font-size:13px;color:${t.done?"var(--muted)":"var(--ink)"};text-decoration:${t.done?"line-through":"none"}">${t.text}</p><button data-tid="${t.id}" class="del-task btn btn-danger btn-sm" style="padding:4px 10px">×</button></div>`).join("")}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <p style="font-weight:800;font-size:16px;color:var(--ink)">Client Tasks</p>
+        <div style="display:flex;gap:8px">
+          <span style="font-size:12px;color:var(--muted)">${tl.length} total · ${completeTasks2.length} complete</span>
+          ${pendingReview.length>0?`<span style="background:#FAF5FF;color:#553C9A;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #E9D8FD">⏳ ${pendingReview.length} pending review</span>`:""}
+        </div>
+      </div>
+      <!-- Add task form -->
+      <div style="background:var(--main-bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:18px">
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Add New Task</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input class="dark-input" id="task-input" placeholder="Describe the task for the client…" style="flex:2;min-width:200px"/>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <select class="dark-input" id="task-requires-upload" style="width:auto;padding:10px 12px;font-size:12px">
+              <option value="false">No upload needed</option>
+              <option value="true">Requires document upload</option>
+            </select>
+            <button class="btn btn-primary btn-sm" id="add-task">+ Add Task</button>
+          </div>
+        </div>
+      </div>
+      <!-- Pending Review — highlighted at top -->
+      ${pendingReview.length>0?`
+      <div style="background:#FAF5FF;border:1px solid #E9D8FD;border-radius:12px;padding:14px;margin-bottom:16px">
+        <p style="font-size:11px;font-weight:700;color:#553C9A;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">⏳ Pending Your Review</p>
+        ${pendingReview.map(t=>`<div style="background:var(--white);border:1px solid #E9D8FD;border-radius:10px;padding:12px 14px;margin-bottom:8px">
+          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
+            <div style="flex:1">
+              <p style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">${t.text}</p>
+              ${t.doc_url?`<a href="${t.doc_url}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;color:var(--teal);font-size:12px;font-weight:600;text-decoration:none;background:var(--teal-mist);padding:4px 10px;border-radius:6px">📎 View ${t.doc_name||"Document"} →</a>`:""}
+            </div>
+            ${taskStatusBadge(t.status||"pending")}
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="approve-task-btn btn btn-sm" data-tid="${t.id}" style="background:#C6F6D5;color:#276749;border:1px solid #9AE6B4;font-size:12px">✓ Approve &amp; Complete</button>
+            <button class="reject-task-btn btn btn-sm" data-tid="${t.id}" style="background:#FFF5F5;color:var(--danger);border:1px solid #FED7D7;font-size:12px">↩ Send Back to Client</button>
+          </div>
+        </div>`).join("")}
+      </div>`:""}
+      <!-- Active tasks -->
+      ${activeTasks2.length===0&&pendingReview.length===0&&completeTasks2.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">✅</p><p>No tasks yet.</p></div>`:""}
+      ${activeTasks2.map(t=>`<div class="admin-row" style="cursor:default;flex-wrap:wrap;gap:8px">
+        <div style="width:18px;height:18px;border-radius:5px;border:2px solid var(--border);background:transparent;flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <p style="font-size:13px;color:var(--ink);font-weight:600">${t.text}</p>
+          ${t.doc_url?`<a href="${t.doc_url}" target="_blank" style="font-size:11px;color:var(--teal)">📎 ${t.doc_name||"Attachment"}</a>`:""}
+        </div>
+        ${taskStatusBadge(t.status||"pending")}
+        <button data-tid="${t.id}" class="del-task btn btn-danger btn-sm" style="padding:4px 10px">×</button>
+      </div>`).join("")}
+      <!-- Complete tasks -->
+      ${completeTasks2.length>0?`
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Completed</p>
+          ${completeTasks2.map(t=>`<div class="admin-row" style="cursor:default;opacity:.6">
+            <div style="width:18px;height:18px;border-radius:5px;background:var(--teal);border:2px solid var(--teal);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
+            <p style="flex:1;font-size:13px;color:var(--muted);text-decoration:line-through">${t.text}</p>
+            ${taskStatusBadge("complete")}
+            <button data-tid="${t.id}" class="del-task btn btn-danger btn-sm" style="padding:4px 10px">×</button>
+          </div>`).join("")}
+        </div>`:""}
     </div>`;
   }
 
@@ -1671,17 +1827,53 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
   else if(tab==="contacts"&&client){
     const cl=contacts||[];
+    const cfTeamC=cl.filter(c=>c.contact_type==="closeflow_team");
+    const authSignC=cl.filter(c=>c.contact_type==="authorized_signer");
+    const otherC=cl.filter(c=>c.contact_type==="other"||!c.contact_type);
+    const ctypeLabels={closeflow_team:"CloseFlow TC Team",authorized_signer:"Authorized Signer",other:"Other Contact"};
+    const ctypeBadge=(ct)=>{const map={closeflow_team:{bg:"var(--teal-mist)",text:"var(--teal-dark)",label:"CloseFlow TC Team"},authorized_signer:{bg:"#FAF5FF",text:"#553C9A",label:"Auth. Signer"},other:{bg:"#FEFCBF",text:"#744210",label:"Other"}};const s=map[ct]||map.other;return`<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${s.bg};color:${s.text}">${s.label}</span>`;};
+    function contactSection(title,icon,bg,list){
+      if(list.length===0)return"";
+      return`<div style="margin-bottom:16px">
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">${icon} ${title}</p>
+        ${list.map(c=>`<div class="admin-row" style="cursor:default">
+          <div style="width:34px;height:34px;border-radius:8px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${icon}</div>
+          <div style="flex:1;min-width:0">
+            <p style="font-size:13px;color:var(--ink);font-weight:600">${c.name} <span style="color:var(--muted);font-weight:400">· ${c.role}</span></p>
+            <p style="font-size:11px;color:var(--muted);margin-top:2px">${c.phone||""}${c.email?` · ${c.email}`:""}</p>
+          </div>
+          ${ctypeBadge(c.contact_type)}
+          <button data-coid="${c.id}" class="del-contact btn btn-danger btn-sm" style="padding:4px 10px">×</button>
+        </div>`).join("")}
+      </div>`;
+    }
     mainContent=`<div class="admin-card">
       <p style="font-weight:800;font-size:16px;color:var(--ink);margin-bottom:16px">Key Contacts</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:18px;align-items:end">
-        <div class="input-group" style="margin-bottom:0"><label class="input-label">Role</label><input class="dark-input" id="c-role" placeholder="Title Company"/></div>
-        <div class="input-group" style="margin-bottom:0"><label class="input-label">Name</label><input class="dark-input" id="c-name" placeholder="Contact Name"/></div>
-        <div class="input-group" style="margin-bottom:0"><label class="input-label">Phone</label><input class="dark-input" id="c-phone" placeholder="Phone"/></div>
-        <div class="input-group" style="margin-bottom:0"><label class="input-label">Email</label><input class="dark-input" id="c-email" placeholder="Email"/></div>
-        <button class="btn btn-primary btn-sm" id="add-contact" style="margin-top:18px">+ Add</button>
+      <!-- Add form -->
+      <div style="background:var(--main-bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:18px">
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Add Contact</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+          <div class="input-group" style="margin-bottom:0"><label class="input-label">Type</label>
+            <select class="dark-input" id="c-type">
+              <option value="closeflow_team">CloseFlow TC Team</option>
+              <option value="authorized_signer">Authorized Signer</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="input-group" style="margin-bottom:0"><label class="input-label">Name</label><input class="dark-input" id="c-name" placeholder="Contact Name"/></div>
+          <div class="input-group" style="margin-bottom:0"><label class="input-label">Role / Title</label><input class="dark-input" id="c-role" placeholder="e.g. Title Officer"/></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
+          <div class="input-group" style="margin-bottom:0"><label class="input-label">Phone</label><input class="dark-input" id="c-phone" placeholder="(555) 000-0000"/></div>
+          <div class="input-group" style="margin-bottom:0"><label class="input-label">Email</label><input class="dark-input" id="c-email" placeholder="email@example.com"/></div>
+          <button class="btn btn-primary btn-sm" id="add-contact" style="margin-bottom:0">+ Add</button>
+        </div>
       </div>
-      ${cl.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">🏢</p><p>No contacts added yet.</p></div>`
-      :cl.map(c=>`<div class="admin-row" style="cursor:default"><div style="flex:1"><p style="font-size:13px;color:var(--ink);font-weight:600">${c.name} <span style="color:var(--muted);font-weight:400">· ${c.role}</span></p><p style="font-size:11px;color:var(--muted);margin-top:2px">${c.phone||""} ${c.email?`· ${c.email}`:""}</p></div><button data-coid="${c.id}" class="del-contact btn btn-danger btn-sm" style="padding:4px 10px">×</button></div>`).join("")}
+      <!-- Contact sections by type -->
+      ${cl.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">🏢</p><p>No contacts added yet.</p></div>`:""}
+      ${contactSection("CloseFlow TC Team","🏢","var(--teal-mist)",cfTeamC)}
+      ${contactSection("Authorized Signers","✍️","#FAF5FF",authSignC)}
+      ${contactSection("Other Contacts","🤝","#FEFCBF",otherC)}
     </div>`;
   }
 
@@ -2006,12 +2198,48 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   });
   on("#add-task","click",async()=>{
     const text=qs("#task-input")?.value.trim();if(!text)return;
+    const requiresUpload=qs("#task-requires-upload")?.value==="true";
     btnLoad("add-task",true,"Adding…");
-    await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false});
+    const status=requiresUpload?"pending":"pending";
+    await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false,status,doc_url:"",doc_name:""});
+    // Notify client
+    if(client){
+      await createNotification(activeClientId,activeFileId,`New task assigned: "${text}"${requiresUpload?" — This task requires a document upload.":""}","info`);
+    }
     await renderAdmin(activeClientId,activeFileId,"tasks");
   });
-  on("#task-input","keydown",async e=>{if(e.key==="Enter"){const text=e.target.value.trim();if(!text)return;await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false});await renderAdmin(activeClientId,activeFileId,"tasks");}});
+  on("#task-input","keydown",async e=>{if(e.key==="Enter"){const text=e.target.value.trim();if(!text)return;await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false,status:"pending",doc_url:"",doc_name:""});await renderAdmin(activeClientId,activeFileId,"tasks");}});
   qsa(".del-task").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("tasks").delete().eq("id",btn.dataset.tid);await renderAdmin(activeClientId,activeFileId,"tasks");}));
+
+  // Approve task (mark complete + notify client)
+  qsa(".approve-task-btn").forEach(btn=>{
+    btn.addEventListener("click",async()=>{
+      const tid=btn.dataset.tid;
+      btn.disabled=true;btn.textContent="Approving…";
+      await sb.from("tasks").update({status:"complete",done:true}).eq("id",tid);
+      if(client){
+        const taskText=tasks?.find(t=>t.id===tid)?.text||"";
+        await createNotification(activeClientId,activeFileId,`Your document for "${taskText}" has been approved. Task marked complete.`,"update");
+        await notifyClient(client.email,client.name,"✅ Task Approved",`Your document has been reviewed and approved by your CloseFlow TC coordinator. Task "${taskText}" is now complete.`,f.address);
+      }
+      await renderAdmin(activeClientId,activeFileId,"tasks");
+    });
+  });
+
+  // Reject task (send back to client)
+  qsa(".reject-task-btn").forEach(btn=>{
+    btn.addEventListener("click",async()=>{
+      const tid=btn.dataset.tid;
+      btn.disabled=true;btn.textContent="Sending back…";
+      await sb.from("tasks").update({status:"pending",doc_url:"",doc_name:"",done:false}).eq("id",tid);
+      if(client){
+        const taskText=tasks?.find(t=>t.id===tid)?.text||"";
+        await createNotification(activeClientId,activeFileId,`Your coordinator needs a different document for "${taskText}". Please check your tasks and re-upload.`,"reminder");
+        await notifyClient(client.email,client.name,"📎 Document Needs Revision",`Your coordinator reviewed your document for "${taskText}" and needs you to re-upload. Please log in to your portal to submit a new document.`,f.address);
+      }
+      await renderAdmin(activeClientId,activeFileId,"tasks");
+    });
+  });
   // Admin notification bell
   on("#admin-notif-bell","click",async()=>{
     const existing=document.getElementById("admin-notif-panel");if(existing){existing.remove();return;}
@@ -2066,9 +2294,10 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   on("#add-contact","click",async()=>{
     const role=qs("#c-role")?.value.trim();const name=qs("#c-name")?.value.trim();
     const phone=qs("#c-phone")?.value.trim();const email=qs("#c-email")?.value.trim();
+    const contact_type=qs("#c-type")?.value||"other";
     if(!role||!name)return;
     btnLoad("add-contact",true,"Adding…");
-    await sb.from("contacts").insert({client_id:activeClientId,file_id:activeFileId,role,name,phone,email});
+    await sb.from("contacts").insert({client_id:activeClientId,file_id:activeFileId,role,name,phone,email,contact_type});
     await renderAdmin(activeClientId,activeFileId,"contacts");
   });
   qsa(".del-contact").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("contacts").delete().eq("id",btn.dataset.coid);await renderAdmin(activeClientId,activeFileId,"contacts");}));
