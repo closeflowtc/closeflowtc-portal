@@ -156,6 +156,11 @@ input,select,textarea{font-family:inherit}
 .btn-spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .65s linear infinite;flex-shrink:0;display:inline-block}
 .btn-spinner-dark{width:14px;height:14px;border:2px solid rgba(58,157,181,.3);border-top-color:var(--teal);border-radius:50%;animation:spin .65s linear infinite;flex-shrink:0;display:inline-block}
 
+/* ── SERVICE INCIDENT BANNER ── */
+.incident-banner{display:none;background:linear-gradient(135deg,#742A2A,#C53030);color:#fff;padding:12px 24px;font-size:13px;font-weight:600;letter-spacing:.02em;text-align:center;position:relative;z-index:200;animation:slideDown .3s ease}
+.incident-banner.active{display:flex;align-items:center;justify-content:center;gap:10px}
+.incident-banner.restored{background:linear-gradient(135deg,#276749,#38A169)}
+
 /* ── SMOOTH TRANSITIONS ── */
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes fadeOut{from{opacity:1}to{opacity:0}}
@@ -242,7 +247,37 @@ async function checkUpcomingReminders(){
   }catch(e){console.error("Reminder check failed:",e);}
 }
 
-const INVITE="FLOW2026";
+// ── SERVICE INCIDENT STATE ────────────────────────────────────────────────────
+async function checkIncidentBanner(){
+  const{data}=await sb.from("notifications").select("*").eq("client_id","00000000-0000-0000-0000-000000000000").order("created_at",{ascending:false}).limit(1);
+  if(!data||!data.length)return;
+  const inc=data[0];
+  const banner=document.getElementById("incident-banner");
+  if(!banner)return;
+  if(inc.type==="incident"&&!inc.is_read){
+    banner.className="incident-banner active";
+    banner.innerHTML=`<span>⚠️</span><span>${inc.message}</span><button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
+  }else if(inc.type==="restored"&&!inc.is_read){
+    banner.className="incident-banner active restored";
+    banner.innerHTML=`<span>✅</span><span>${inc.message}</span><button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
+  }
+}
+
+const INVITE="FLOW2026"; // fallback only — unique codes take priority
+
+async function validateInviteCode(code){
+  // Check unique codes table first
+  const{data:uc}=await sb.from("invite_codes").select("*").eq("code",code.toUpperCase()).eq("used",false).single();
+  if(uc)return{valid:true,id:uc.id,type:"unique",assignedTo:uc.assigned_to};
+  // Fall back to global code
+  if(code.toUpperCase()===INVITE)return{valid:true,id:null,type:"global"};
+  return{valid:false};
+}
+
+async function markInviteCodeUsed(id){
+  if(!id)return;
+  await sb.from("invite_codes").update({used:true}).eq("id",id);
+}
 const MILESTONES=["Deal Submitted","Title Ordered","Title Search Complete","Clear to Close","HUD Sent for Approval","Closing Scheduled","Closed"];
 const FILE_STATUSES=["Active","Pending","On Hold","Archived","Closed"];
 const STATUS={
@@ -755,6 +790,8 @@ async function doLogin(){
   const{data:files}=await sb.from("files").select("*").eq("client_id",data.id).order("created_at");
   ACTIVE_FILE_ID=(files&&files.length)?files[0].id:null;
   await checkUpcomingReminders();
+  await renderClient(data.id,ACTIVE_FILE_ID,"overview",false,false);
+  await checkIncidentBanner();
   if(!data.onboarding_complete){showOnboardingModal(data.id,()=>renderClient(data.id,ACTIVE_FILE_ID));return;}
   await renderClient(data.id,ACTIVE_FILE_ID);
 }
@@ -764,7 +801,9 @@ async function doRegister(){
   const confirm=qs("#f-confirm")?.value,code=qs("#f-code")?.value.trim().toUpperCase();
   if(!name||!email||!pass){renderLogin("register","Please fill in all required fields.");return;}
   if(pass!==confirm){renderLogin("register","Passwords don't match.");return;}
-  if(code!==INVITE){renderLogin("register","Invalid invite code. Contact your coordinator.");return;}
+  btnLoad("do-reg",true,"Verifying…");
+  const inviteResult=await validateInviteCode(code);
+  if(!inviteResult.valid){renderLogin("register","Invalid invite code. Contact your coordinator.");return;}
   btnLoad("do-reg",true,"Creating account…");
   const{data:exists}=await sb.from("clients").select("id").eq("email",email).is("deleted_at",null).single();
   if(exists){renderLogin("register","An account with this email already exists.");return;}
@@ -772,6 +811,7 @@ async function doRegister(){
   if(error){renderLogin("register","Something went wrong. Please try again.");return;}
   const{data:newFile}=await sb.from("files").insert({client_id:client.id,address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"}).select().single();
   await sb.from("messages").insert({client_id:client.id,from_name:"CloseFlow TC",text:`Welcome, ${name}! Your account is ready. Your coordinator will be in touch shortly.`,date:new Date().toISOString().slice(0,10),is_admin:true});
+  await markInviteCodeUsed(inviteResult.id);
   SESSION={role:"client",client};
   ACTIVE_FILE_ID=newFile?.id||null;
   await renderClient(client.id,ACTIVE_FILE_ID,"overview",false,false);
@@ -1143,6 +1183,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       </div>
     </div>
     <div class="main-area">
+      <div id="incident-banner" class="incident-banner"></div>
       <div class="topbar">
         <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0">
           ${propertySelectorHtml}
@@ -1165,34 +1206,66 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   on("#notif-bell","click",async()=>{
     const existing=document.getElementById("notif-panel");
     if(existing){existing.remove();return;}
-    // Mark all as read
-    await sb.from("notifications").update({is_read:true}).eq("client_id",clientId).eq("is_read",false);
+    // Reload fresh notifs
+    const{data:freshNotifs}=await sb.from("notifications").select("*").eq("client_id",clientId).order("created_at",{ascending:false}).limit(30);
+    const nl=freshNotifs||[];
     const panel=document.createElement("div");
     panel.id="notif-panel";
-    panel.style.cssText="position:fixed;top:72px;right:20px;width:340px;max-height:420px;background:var(--white);border-radius:16px;border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.15);z-index:500;overflow:hidden;animation:slideUp .2s ease";
-    const nl=notifs||[];
-    panel.innerHTML=`<div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <p style="font-weight:700;font-size:14px;color:var(--ink)">🔔 Notifications</p>
-      <button onclick="document.getElementById('notif-panel').remove()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">×</button>
-    </div>
-    <div style="overflow-y:auto;max-height:340px">
-      ${nl.length===0?`<div style="padding:32px;text-align:center;color:var(--muted)"><p style="font-size:28px;margin-bottom:8px">🔔</p><p style="font-size:13px">No notifications yet.</p></div>`
-      :nl.map(n=>{
-        const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":"ℹ️";
-        const bg=n.is_read?"var(--white)":"var(--teal-mist)";
-        const dt=new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true});
-        return`<div style="padding:12px 18px;border-bottom:1px solid var(--border);background:${bg};transition:background .2s">
-          <div style="display:flex;align-items:flex-start;gap:10px">
-            <span style="font-size:16px;flex-shrink:0;margin-top:1px">${ic}</span>
-            <div>
-              <p style="font-size:13px;color:var(--ink);line-height:1.5">${n.message}</p>
-              <p style="font-size:10px;color:var(--muted);margin-top:4px">${dt}</p>
+    panel.style.cssText="position:fixed;top:72px;right:20px;width:360px;max-height:480px;background:var(--white);border-radius:16px;border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.15);z-index:500;overflow:hidden;animation:slideDown .25s cubic-bezier(.4,0,.2,1)";
+    const unread=nl.filter(n=>!n.is_read);
+    function buildPanel(){
+      return`<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--white);position:sticky;top:0;z-index:1">
+        <div style="display:flex;align-items:center;gap:8px">
+          <p style="font-weight:700;font-size:14px;color:var(--ink)">🔔 Notifications</p>
+          ${unread.length>0?`<span style="background:var(--danger);color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px">${unread.length}</span>`:""}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${unread.length>0?`<button id="mark-all-read" style="font-size:11px;font-weight:700;color:var(--teal);background:var(--teal-mist);border:none;border-radius:6px;padding:4px 10px;cursor:pointer">Mark all read</button>`:""}
+          <button onclick="document.getElementById('notif-panel').remove()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
+        </div>
+      </div>
+      <div style="overflow-y:auto;max-height:400px">
+        ${nl.length===0?`<div style="padding:32px;text-align:center;color:var(--muted)"><p style="font-size:28px;margin-bottom:8px">🔔</p><p style="font-size:13px">No notifications yet.</p></div>`
+        :nl.map(n=>{
+          const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":"ℹ️";
+          const bg=n.is_read?"var(--white)":"var(--teal-mist)";
+          const dt=new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true});
+          return`<div style="padding:12px 18px;border-bottom:1px solid var(--border);background:${bg};transition:background .2s" id="notif-${n.id}">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <span style="font-size:16px;flex-shrink:0;margin-top:2px">${ic}</span>
+              <div style="flex:1;min-width:0">
+                <p style="font-size:13px;color:var(--ink);line-height:1.55;margin-bottom:4px">${n.message}</p>
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
+                  <p style="font-size:10px;color:var(--muted)">${dt}</p>
+                  <button class="notif-toggle" data-nid="${n.id}" data-read="${n.is_read}" style="font-size:10px;font-weight:700;color:var(--muted);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">${n.is_read?"Mark unread":"Mark read"}</button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>`;}).join("")}
-    </div>`;
+          </div>`;}).join("")}
+      </div>`;
+    }
+    panel.innerHTML=buildPanel();
     document.body.appendChild(panel);
-    // Close on outside click
+    // Mark all read
+    panel.querySelector("#mark-all-read")?.addEventListener("click",async()=>{
+      await sb.from("notifications").update({is_read:true}).eq("client_id",clientId).eq("is_read",false);
+      nl.forEach(n=>n.is_read=true);
+      panel.innerHTML=buildPanel();
+      wireToggles();
+    });
+    function wireToggles(){
+      panel.querySelectorAll(".notif-toggle").forEach(btn=>{
+        btn.addEventListener("click",async()=>{
+          const nid=btn.dataset.nid;
+          const isRead=btn.dataset.read==="true";
+          await sb.from("notifications").update({is_read:!isRead}).eq("id",nid);
+          const n=nl.find(x=>x.id===nid);if(n)n.is_read=!isRead;
+          panel.innerHTML=buildPanel();
+          wireToggles();
+        });
+      });
+    }
+    wireToggles();
     setTimeout(()=>document.addEventListener("click",function h(e){if(!panel.contains(e.target)&&!document.getElementById("notif-bell")?.contains(e.target)){panel.remove();document.removeEventListener("click",h);}},true),100);
   });
 
@@ -1227,7 +1300,6 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     const address=qs("#acc-address")?.value.trim();const email=qs("#acc-email")?.value.trim();
     btnLoad("save-acc",true,"Saving…");
     await sb.from("clients").update({name,phone,address,email}).eq("id",clientId);
-    await notifyAdmins(client.name,"👤 Profile Updated",`Name: ${name} | Phone: ${phone||"—"} | Email: ${email}`);
     btnLoad("save-acc",false,"✓ Saved!","Save Profile");
     const msg=qs("#acc-msg");if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Profile saved!";}
     SESSION.client={...SESSION.client,name,phone,address,email};
@@ -1370,7 +1442,49 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     </div>`;
   }
 
-  else if(tab==="team"){
+  else if(tab==="invite-codes"){
+    const{data:codes}=await sb.from("invite_codes").select("*").order("created_at",{ascending:false});
+    const ic=codes||[];
+    function genCode(){return"CF"+Math.random().toString(36).slice(2,7).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();}
+    mainContent=`<div class="admin-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div>
+          <p style="font-weight:800;font-size:16px;color:var(--ink)">🔑 Invite Codes</p>
+          <p style="font-size:12px;color:var(--muted);margin-top:2px">Each code is one-time use. Generate one per new client before they register.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="gen-code-btn">+ Generate New Code</button>
+      </div>
+      <!-- Generate form -->
+      <div id="gen-code-form" style="display:none;background:var(--teal-mist);border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid var(--teal-light)">
+        <p style="font-weight:700;font-size:13px;color:var(--ink);margin-bottom:12px">New Invite Code</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="input-group" style="margin-bottom:0"><label class="input-label">Assign to (client name)</label><input class="finput" id="ic-name" placeholder="e.g. John Smith"/></div>
+          <div class="input-group" style="margin-bottom:0"><label class="input-label">Code (auto-generated)</label><input class="finput" id="ic-code" style="font-weight:700;letter-spacing:2px;text-transform:uppercase" placeholder="Click generate"/></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" id="regen-code">🔄 New Code</button>
+          <button class="btn btn-teal btn-sm" id="save-ic">Save Code</button>
+          <button class="btn btn-ghost btn-sm" id="cancel-ic">Cancel</button>
+        </div>
+        <div id="ic-msg" style="display:none;font-size:12px;margin-top:10px;padding:8px 12px;border-radius:8px"></div>
+      </div>
+      <!-- Code list -->
+      ${ic.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">🔑</p><p>No invite codes yet. Generate one above.</p></div>`
+      :ic.map(c=>`<div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px;border:1px solid ${c.used?"var(--border)":"var(--teal-light)"};background:${c.used?"var(--main-bg)":"var(--teal-mist)"};margin-bottom:8px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+            <p style="font-weight:800;font-size:15px;color:${c.used?"var(--muted)":"var(--ink)"};letter-spacing:2px;font-family:monospace">${c.code}</p>
+            ${c.used?`<span style="font-size:10px;font-weight:700;background:#EDF2F7;color:var(--muted);padding:2px 8px;border-radius:20px">Used</span>`:`<span style="font-size:10px;font-weight:700;background:var(--teal);color:#fff;padding:2px 8px;border-radius:20px">Active</span>`}
+          </div>
+          <p style="font-size:11px;color:var(--muted)">${c.assigned_to?`For: ${c.assigned_to} · `:""} Created ${new Date(c.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</p>
+        </div>
+        ${!c.used?`<button class="copy-ic-btn btn btn-ghost btn-sm" data-code="${c.code}" style="flex-shrink:0">📋 Copy</button>`:""}
+        <button class="del-ic-btn btn btn-danger btn-sm" data-icid="${c.id}" style="flex-shrink:0;padding:4px 10px">×</button>
+      </div>`).join("")}
+    </div>`;
+  }
+
+    else if(tab==="team"){
     const PERMS=[
       {key:"view_clients",label:"View Clients",desc:"Can see client list and files"},
       {key:"edit_files",label:"Edit Files",desc:"Can update file details, status, milestone"},
@@ -1606,7 +1720,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <div style="width:36px;height:36px;border-radius:10px;background:${adminBellBg};border:1.5px solid ${adminBellBorder};display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='${adminBellBg}'">🔔</div>
     ${adminBellBadge}
   </div>`;
-  const adminNavItems=[{id:"overview",icon:"📊",label:"Dashboard"},...(isSuperAdmin?[{id:"team",icon:"👥",label:"Team Management"}]:[])];
+  const adminNavItems=[{id:"overview",icon:"📊",label:"Dashboard"},...(isSuperAdmin?[{id:"team",icon:"👥",label:"Team Management"},{id:"invite-codes",icon:"🔑",label:"Invite Codes"}]:[])];
 
   show(`<div class="admin-wrap">
     <div class="admin-sidebar">
@@ -1686,7 +1800,61 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   // Events
   on("#admin-signout","click",()=>{SESSION=null;renderLogin();});
 
+  // Service incident controls
+  on("#post-incident-btn","click",()=>{
+    const f2=qs("#incident-input");if(f2){f2.style.display="block";}
+    const inp=qs("#incident-msg-input");if(inp)inp.placeholder="Describe the issue briefly…";
+    qs("#post-incident-btn")?.setAttribute("data-mode","incident");
+  });
+  on("#post-restored-btn","click",()=>{
+    const f2=qs("#incident-input");if(f2){f2.style.display="block";}
+    const inp=qs("#incident-msg-input");if(inp)inp.placeholder="e.g. All systems are restored. We apologize for any inconvenience.";
+    qs("#post-incident-btn")?.setAttribute("data-mode","restored");
+  });
+  on("#send-incident","click",async()=>{
+    const msg=qs("#incident-msg-input")?.value.trim();
+    const mode=qs("#post-incident-btn")?.getAttribute("data-mode")||"incident";
+    if(!msg)return;
+    btnLoad("send-incident",true,"Posting…");
+    const text=mode==="incident"?`⚠️ Service Notice: ${msg}`:`✅ Service Restored: ${msg}`;
+    await sb.from("notifications").insert({client_id:"00000000-0000-0000-0000-000000000000",file_id:null,message:text,type:mode,is_read:false});
+    btnLoad("send-incident",false,"✓ Posted!","Post Notice");
+    const f2=qs("#incident-input");if(f2)f2.style.display="none";
+  });
+  on("#cancel-incident","click",()=>{const f2=qs("#incident-input");if(f2)f2.style.display="none";});
+
+  // Invite code controls
+  on("#gen-code-btn","click",()=>{
+    const f2=qs("#gen-code-form");if(f2)f2.style.display="block";
+    const ic=qs("#ic-code");if(ic)ic.value="CF"+Math.random().toString(36).slice(2,7).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();
+  });
+  on("#regen-code","click",()=>{const ic=qs("#ic-code");if(ic)ic.value="CF"+Math.random().toString(36).slice(2,7).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();});
+  on("#cancel-ic","click",()=>{const f2=qs("#gen-code-form");if(f2)f2.style.display="none";});
+  on("#save-ic","click",async()=>{
+    const name=qs("#ic-name")?.value.trim();
+    const code=qs("#ic-code")?.value.trim().toUpperCase();
+    const msg=qs("#ic-msg");
+    if(!code){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please generate a code first.";}return;}
+    btnLoad("save-ic",true,"Saving…");
+    await sb.from("invite_codes").insert({code,assigned_to:name||"",used:false});
+    await renderAdmin(null,null,"invite-codes");
+  });
+  qsa(".copy-ic-btn").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      navigator.clipboard.writeText(btn.dataset.code);
+      btn.textContent="✓ Copied!";
+      setTimeout(()=>btn.textContent="📋 Copy",1800);
+    });
+  });
+  qsa(".del-ic-btn").forEach(btn=>{
+    btn.addEventListener("click",async()=>{
+      await sb.from("invite_codes").delete().eq("id",btn.dataset.icid);
+      await renderAdmin(null,null,"invite-codes");
+    });
+  });
+
   // Load coordinator dropdown async
+
   if(qs("#coord-dropdown-wrap")){
     buildCoordDropdown(f.coordinator||"Danielle McCarter","f-coord").then(html=>{
       const wrap=qs("#coord-dropdown-wrap");
@@ -1781,7 +1949,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const ctx=qs("#admin-donut");
     if(ctx)new Chart(ctx,{type:"doughnut",data:{labels:["Active","Pending","On Hold","Closed"],datasets:[{data:[active||1,pending,onHold,closed],backgroundColor:["#3A9DB5","#D69E2E","#E53E3E","#38A169"],borderWidth:0,hoverOffset:4}]},options:{cutout:"72%",plugins:{legend:{display:false}},animation:{animateScale:true}}});
   }
-  qsa("[data-nav]").forEach(btn=>btn.addEventListener("click",()=>{if(btn.dataset.nav==="team")renderAdmin(null,null,"team");else renderAdmin(null,null,"overview");}));
+  qsa("[data-nav]").forEach(btn=>btn.addEventListener("click",()=>{if(btn.dataset.nav==="team")renderAdmin(null,null,"team");else if(btn.dataset.nav==="invite-codes")renderAdmin(null,null,"invite-codes");else renderAdmin(null,null,"overview");}));
   qsa(".sidebar-client-btn[data-cid]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(btn.dataset.cid,null,"client")));
   qsa(".client-row[data-cid]").forEach(row=>row.addEventListener("click",()=>renderAdmin(row.dataset.cid,null,"client")));
   qsa("[data-atab]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(activeClientId,activeFileId,btn.dataset.atab)));
