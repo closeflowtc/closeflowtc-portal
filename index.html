@@ -633,13 +633,20 @@ async function doRegister(){
   if(code!==INVITE){renderLogin("register","Invalid invite code. Contact your coordinator.");return;}
   const{data:exists}=await sb.from("clients").select("id").eq("email",email).single();
   if(exists){renderLogin("register","An account with this email already exists.");return;}
-  const{data:client,error}=await sb.from("clients").insert({name,email,password:pass,phone,address:"",photo_url:"",has_seen_welcome:false}).select().single();
+  const{data:client,error}=await sb.from("clients").insert({name,email,password:pass,phone,address:"",photo_url:"",has_seen_welcome:false,onboarding_complete:false}).select().single();
   if(error){renderLogin("register","Something went wrong. Please try again.");return;}
   const{data:newFile}=await sb.from("files").insert({client_id:client.id,address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"}).select().single();
   await sb.from("messages").insert({client_id:client.id,from_name:"CloseFlow TC",text:`Welcome, ${name}! Your account is ready. Your coordinator will be in touch shortly.`,date:new Date().toISOString().slice(0,10),is_admin:true});
   SESSION={role:"client",client};
   ACTIVE_FILE_ID=newFile?.id||null;
-  showOnboardingModal(client.id,()=>renderClient(client.id,ACTIVE_FILE_ID));
+  // Render dashboard first, then show onboarding modal on top
+  await renderClient(client.id,ACTIVE_FILE_ID,"overview",false,false);
+  showOnboardingModal(client.id,async()=>{
+    // Refresh client data after onboarding completes
+    const{data:updated}=await sb.from("clients").select("*").eq("id",client.id).single();
+    if(updated)SESSION.client=updated;
+    await renderClient(client.id,ACTIVE_FILE_ID,"overview",true,false);
+  });
 }
 
 // ── CLIENT DASHBOARD ──────────────────────────────────────────────────────────
@@ -1105,7 +1112,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 // ── ADMIN PANEL ───────────────────────────────────────────────────────────────
 async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   const[{data:clients},{data:admins}]=await Promise.all([
-    sb.from("clients").select("*").order("created_at"),
+    sb.from("clients").select("*").is("deleted_at",null).order("created_at"),
     sb.from("admins").select("*").order("created_at"),
   ]);
   const currentAdmin=SESSION.admin;
@@ -1184,13 +1191,14 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           <p style="font-weight:800;font-size:16px;color:var(--ink)">All Clients</p>
           <span style="font-size:12px;color:var(--teal);font-weight:600">${allClients.length} total</span>
         </div>
-        ${allClients.map(c=>`<div class="admin-row client-row" data-cid="${c.id}">
+        ${allClients.map(c=>`<div class="admin-row client-row" data-cid="${c.id}" style="cursor:pointer">
           ${avatarEl(c.name,c.photo_url||"",40)}
           <div style="flex:1;min-width:0">
             <p style="font-weight:700;font-size:14px;color:var(--ink)">${c.name}</p>
             <p style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.email}${c.phone?` · ${c.phone}`:""}</p>
           </div>
           ${badgeEl(c.status||"Pending")}
+          ${isSuperAdmin||currentAdmin?.permissions?.delete_clients?`<button class="quick-delete-client btn btn-danger btn-sm" data-cid="${c.id}" data-cname="${c.name}" style="padding:4px 10px;flex-shrink:0" onclick="event.stopPropagation()">🗑</button>`:""}
           <span style="font-size:20px;color:var(--teal);font-weight:300">›</span>
         </div>`).join("")}
       </div>
@@ -1209,12 +1217,87 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   }
 
   else if(tab==="team"){
+    const PERMS=[
+      {key:"view_clients",label:"View Clients",desc:"Can see client list and files"},
+      {key:"edit_files",label:"Edit Files",desc:"Can update file details, status, milestone"},
+      {key:"manage_tasks",label:"Manage Tasks",desc:"Can add and delete client tasks"},
+      {key:"manage_dates",label:"Manage Dates",desc:"Can add and delete key dates"},
+      {key:"manage_contacts",label:"Manage Contacts",desc:"Can add and delete contacts"},
+      {key:"manage_documents",label:"Manage Documents",desc:"Can upload and delete documents"},
+      {key:"send_messages",label:"Send Messages",desc:"Can message clients"},
+      {key:"reset_passwords",label:"Reset Passwords",desc:"Can reset client passwords"},
+      {key:"delete_clients",label:"Delete Clients",desc:"Can archive or delete client accounts"},
+    ];
     mainContent=`<div class="admin-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-        <p style="font-weight:800;font-size:16px;color:var(--ink)">Team Members</p>
+        <div>
+          <p style="font-weight:800;font-size:16px;color:var(--ink)">Team Members</p>
+          <p style="font-size:12px;color:var(--muted);margin-top:2px">Click a team member to manage their permissions.</p>
+        </div>
       </div>
-      ${(admins||[]).map(a=>`<div class="admin-row" style="cursor:default">${avatarEl(a.name,"",40)}<div style="flex:1"><p style="font-weight:700;font-size:14px;color:var(--ink)">${a.name}${a.id===currentAdmin?.id?` <span style="font-size:11px;color:var(--muted)">(you)</span>`:""}</p><p style="font-size:12px;color:var(--muted);margin-top:1px">${a.email}</p></div>${isSuperAdmin&&a.id!==currentAdmin?.id?`<select data-aid="${a.id}" class="role-select dark-input" style="width:auto;padding:6px 10px;font-size:12px"><option value="admin" ${a.role==="admin"?"selected":""}>👤 Admin</option><option value="superadmin" ${a.role==="superadmin"?"selected":""}>⭐ Super Admin</option></select><button data-aid="${a.id}" class="del-admin btn btn-danger btn-sm">Remove</button>`:roleBadge(a.role)}</div>`).join("")}
-      ${isSuperAdmin?`<div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)"><p style="font-weight:700;font-size:14px;color:var(--ink);margin-bottom:16px">Add New Team Member</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px"><div class="input-group" style="margin-bottom:0"><label class="input-label">Full Name</label><input class="dark-input" id="new-admin-name" placeholder="Full Name"/></div><div class="input-group" style="margin-bottom:0"><label class="input-label">Email</label><input class="dark-input" id="new-admin-email" type="email" placeholder="Email"/></div><div class="input-group" style="margin-bottom:0"><label class="input-label">Password</label><input class="dark-input" id="new-admin-pass" type="password" placeholder="Password"/></div><div class="input-group" style="margin-bottom:0"><label class="input-label">Role</label><select class="dark-input" id="new-admin-role"><option value="admin">👤 Admin</option><option value="superadmin">⭐ Super Admin</option></select></div></div><div id="team-msg" style="display:none;font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:8px"></div><button class="btn btn-primary" id="add-admin">Add Team Member</button></div>`:""}
+      ${(admins||[]).map(a=>{
+        const perms=a.permissions||{};
+        const isMe=a.id===currentAdmin?.id;
+        const isSA=a.role==="superadmin";
+        return`<div style="border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden">
+          <!-- Member header -->
+          <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--main-bg)">
+            ${avatarEl(a.name,"",42)}
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:8px">
+                <p style="font-weight:700;font-size:14px;color:var(--ink)">${a.name}${isMe?` <span style="font-size:11px;color:var(--muted)">(you)</span>`:""}</p>
+                ${roleBadge(a.role)}
+              </div>
+              <p style="font-size:12px;color:var(--muted);margin-top:2px">${a.email}</p>
+            </div>
+            ${isSuperAdmin&&!isMe?`
+              <div style="display:flex;gap:8px;align-items:center">
+                <select data-aid="${a.id}" class="role-select dark-input" style="width:auto;padding:6px 10px;font-size:12px">
+                  <option value="admin" ${a.role==="admin"?"selected":""}>👤 Admin</option>
+                  <option value="superadmin" ${a.role==="superadmin"?"selected":""}>⭐ Super Admin</option>
+                </select>
+                <button data-aid="${a.id}" class="del-admin btn btn-danger btn-sm">Remove</button>
+              </div>`:""}
+          </div>
+          <!-- Permissions grid (only for non-superadmin, shown by superadmin) -->
+          ${isSuperAdmin&&!isMe&&!isSA?`
+          <div style="padding:14px 16px;border-top:1px solid var(--border);background:var(--white)">
+            <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">Permissions</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              ${PERMS.map(p=>{
+                const enabled=perms[p.key]!==false;
+                return`<label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;border:1.5px solid ${enabled?"var(--teal-light)":"var(--border)"};background:${enabled?"var(--teal-mist)":"var(--main-bg)"};cursor:pointer;transition:all .2s;gap:8px">
+                  <div>
+                    <p style="font-size:12px;font-weight:700;color:var(--ink)">${p.label}</p>
+                    <p style="font-size:10px;color:var(--muted)">${p.desc}</p>
+                  </div>
+                  <div class="perm-toggle" data-aid="${a.id}" data-pkey="${p.key}" data-enabled="${enabled}" style="width:40px;height:22px;border-radius:11px;background:${enabled?"var(--teal)":"var(--border)"};position:relative;flex-shrink:0;transition:background .2s;cursor:pointer">
+                    <div style="position:absolute;top:3px;left:${enabled?"21px":"3px"};width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div>
+                  </div>
+                </label>`;
+              }).join("")}
+            </div>
+          </div>`:""}
+          ${isSA&&!isMe?`<div style="padding:10px 16px;border-top:1px solid var(--border);background:var(--white)"><p style="font-size:12px;color:var(--muted)">Super Admins have full access to all features.</p></div>`:""}
+        </div>`;
+      }).join("")}
+      ${isSuperAdmin?`
+        <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+          <p style="font-weight:700;font-size:14px;color:var(--ink);margin-bottom:16px">Add New Team Member</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div class="input-group" style="margin-bottom:0"><label class="input-label">Full Name</label><input class="dark-input" id="new-admin-name" placeholder="Full Name"/></div>
+            <div class="input-group" style="margin-bottom:0"><label class="input-label">Email</label><input class="dark-input" id="new-admin-email" type="email" placeholder="Email"/></div>
+            <div class="input-group" style="margin-bottom:0"><label class="input-label">Password</label><input class="dark-input" id="new-admin-pass" type="password" placeholder="Password"/></div>
+            <div class="input-group" style="margin-bottom:0"><label class="input-label">Role</label>
+              <select class="dark-input" id="new-admin-role">
+                <option value="admin">👤 Admin</option>
+                <option value="superadmin">⭐ Super Admin</option>
+              </select>
+            </div>
+          </div>
+          <div id="team-msg" style="display:none;font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:8px"></div>
+          <button class="btn btn-primary" id="add-admin">Add Team Member</button>
+        </div>`:""}
     </div>`;
   }
 
@@ -1405,15 +1488,40 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     </div>
     <div class="admin-main fade-in">
       ${client&&tab!=="overview"&&tab!=="team"?`
-        <div class="admin-card" style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
+        <div class="admin-card" style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap">
           ${avatarEl(client.name,client.photo_url||"",52)}
-          <div style="flex:1">
+          <div style="flex:1;min-width:0">
             <h2 style="font-weight:900;font-size:20px;color:var(--ink)">${client.name}</h2>
             <p style="font-size:13px;color:var(--muted);margin-top:2px">${client.email}${client.phone?` · ${client.phone}`:""}</p>
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             ${badgeEl(f.status)}
             <span style="font-size:12px;color:var(--muted)">${clientFiles.length} ${clientFiles.length===1?"property":"properties"}</span>
+            <button id="edit-client-btn" class="btn btn-ghost btn-sm">✏️ Edit Client</button>
+            ${isSuperAdmin||currentAdmin?.permissions?.delete_clients?`<button id="delete-client-btn" class="btn btn-danger btn-sm">🗑 Delete</button>`:""}
+          </div>
+        </div>
+        <!-- Edit Client Form (hidden) -->
+        <div id="edit-client-form" style="display:none" class="admin-card">
+          <p style="font-weight:700;font-size:15px;color:var(--ink);margin-bottom:16px">Edit Client — ${client.name}</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div class="input-group"><label class="input-label">Full Name</label><input class="dark-input" id="edit-client-name" value="${client.name||""}"/></div>
+            <div class="input-group"><label class="input-label">Email</label><input class="dark-input" id="edit-client-email" type="email" value="${client.email||""}"/></div>
+            <div class="input-group"><label class="input-label">Phone</label><input class="dark-input" id="edit-client-phone" value="${client.phone||""}" placeholder="(555) 000-0000"/></div>
+            <div class="input-group"><label class="input-label">Business Name</label><input class="dark-input" id="edit-client-biz" value="${client.business_name||""}"/></div>
+            <div class="input-group"><label class="input-label">Markets</label><input class="dark-input" id="edit-client-markets" value="${client.market_radius||""}"/></div>
+            <div class="input-group"><label class="input-label">Time Zone</label>
+              <select class="dark-input" id="edit-client-tz">
+                ${["","Eastern (ET)","Central (CT)","Mountain (MT)","Pacific (PT)","Alaska (AKT)","Hawaii (HT)"].map(tz=>`<option ${client.time_zone===tz?"selected":""}>${tz}</option>`).join("")}
+              </select>
+            </div>
+            <div class="input-group"><label class="input-label">Comm Preference</label><input class="dark-input" id="edit-client-comm" value="${client.comm_preference||""}"/></div>
+            <div class="input-group"><label class="input-label">Preferred Title</label><input class="dark-input" id="edit-client-title" value="${client.preferred_title||""}"/></div>
+          </div>
+          <div id="edit-client-msg" style="display:none;font-size:12px;margin-top:8px;padding:8px 12px;border-radius:8px"></div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-primary btn-sm" id="save-edit-client">Save Changes</button>
+            <button class="btn btn-ghost btn-sm" id="cancel-edit-client">Cancel</button>
           </div>
         </div>
         <div class="admin-tab-bar">${adminTabs.map(t=>`<button data-atab="${t.id}" class="admin-tab ${t.id===tab?"active":""}">${t.label}</button>`).join("")}</div>`:""}
@@ -1423,6 +1531,78 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
   // Events
   on("#admin-signout","click",()=>{SESSION=null;renderLogin();});
+
+  // Permissions toggles
+  qsa(".perm-toggle").forEach(toggle=>{
+    toggle.addEventListener("click",async()=>{
+      const aid=toggle.dataset.aid;
+      const pkey=toggle.dataset.pkey;
+      const enabled=toggle.dataset.enabled==="true";
+      const newVal=!enabled;
+      // Get current permissions
+      const{data:adminRec}=await sb.from("admins").select("permissions").eq("id",aid).single();
+      const currentPerms=adminRec?.permissions||{};
+      currentPerms[pkey]=newVal;
+      await sb.from("admins").update({permissions:currentPerms}).eq("id",aid);
+      await renderAdmin(null,null,"team");
+    });
+  });
+
+  // Edit client
+  on("#edit-client-btn","click",()=>{
+    const f2=qs("#edit-client-form");if(f2)f2.style.display="block";
+    const b=qs("#edit-client-btn");if(b)b.style.display="none";
+  });
+  on("#cancel-edit-client","click",()=>{
+    const f2=qs("#edit-client-form");if(f2)f2.style.display="none";
+    const b=qs("#edit-client-btn");if(b)b.style.display="inline-flex";
+  });
+  on("#save-edit-client","click",async()=>{
+    const name=qs("#edit-client-name")?.value.trim();
+    const email=qs("#edit-client-email")?.value.trim();
+    const phone=qs("#edit-client-phone")?.value.trim();
+    const business_name=qs("#edit-client-biz")?.value.trim();
+    const market_radius=qs("#edit-client-markets")?.value.trim();
+    const time_zone=qs("#edit-client-tz")?.value;
+    const comm_preference=qs("#edit-client-comm")?.value.trim();
+    const preferred_title=qs("#edit-client-title")?.value.trim();
+    const msg=qs("#edit-client-msg");
+    if(!name||!email){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Name and email are required.";}return;}
+    await sb.from("clients").update({name,email,phone,business_name,market_radius,time_zone,comm_preference,preferred_title}).eq("id",activeClientId);
+    if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Client updated!";}
+    setTimeout(()=>renderAdmin(activeClientId,activeFileId,tab),800);
+  });
+
+  // Delete client (from header button)
+  on("#delete-client-btn","click",()=>confirmDeleteClient(activeClientId,client?.name));
+
+  // Delete client (from overview quick-delete buttons)
+  qsa(".quick-delete-client").forEach(btn=>{
+    btn.addEventListener("click",()=>confirmDeleteClient(btn.dataset.cid,btn.dataset.cname));
+  });
+
+  function confirmDeleteClient(cid,cname){
+    const overlay=document.createElement("div");
+    overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
+    overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:32px;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease">
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="width:56px;height:56px;border-radius:50%;background:#FFF5F5;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px">🗑</div>
+        <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:8px">Delete ${cname||"this client"}?</h3>
+        <p style="font-size:13px;color:var(--muted);line-height:1.6">This will archive the client and hide them from the portal. Their data is preserved and can be restored by contacting support.</p>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button id="cancel-delete" class="btn btn-ghost">Cancel</button>
+        <button id="confirm-delete" class="btn btn-danger" style="background:var(--danger);color:#fff">Yes, Delete</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("#cancel-delete").addEventListener("click",()=>overlay.remove());
+    overlay.querySelector("#confirm-delete").addEventListener("click",async()=>{
+      await sb.from("clients").update({deleted_at:new Date().toISOString()}).eq("id",cid);
+      overlay.remove();
+      await renderAdmin(null,null,"overview");
+    });
+  }
   if(tab==="overview"){
     const ctx=qs("#admin-donut");
     if(ctx)new Chart(ctx,{type:"doughnut",data:{labels:["Active","Pending","On Hold","Closed"],datasets:[{data:[active||1,pending,onHold,closed],backgroundColor:["#3A9DB5","#D69E2E","#E53E3E","#38A169"],borderWidth:0,hoverOffset:4}]},options:{cutout:"72%",plugins:{legend:{display:false}},animation:{animateScale:true}}});
