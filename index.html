@@ -471,6 +471,90 @@ async function buildCoordDropdown(selectedName,id="f-coord"){
   if(selectedName&&!names.includes(selectedName))names.unshift(selectedName);
   return`<select class="dark-input" id="${id}">${names.map(n=>`<option value="${n}" ${n===selectedName?"selected":""}>${n}</option>`).join("")}</select>`;
 }
+
+// ── FEEDBACK SYSTEM ───────────────────────────────────────────────────────────
+const GOOGLE_REVIEW_URL="https://g.page/r/CVY1ZVKaoYTFEAE/review";
+
+function showFeedbackModal(clientId,clientName,triggerType="manual",onDone){
+  const el=document.createElement("div");
+  el.id="feedback-overlay";
+  el.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px;animation:fadeIn .25s ease";
+  el.innerHTML=`<div style="background:var(--white);border-radius:24px;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.2);max-width:480px;width:100%;padding:36px;animation:slideUp .35s cubic-bezier(.34,1.56,.64,1)">
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:40px;margin-bottom:12px">⭐</div>
+      <h2 style="font-size:20px;font-weight:900;color:var(--ink);margin-bottom:8px">How is everything going?</h2>
+      <p style="font-size:13px;color:var(--muted);line-height:1.65">Your feedback helps CloseFlow TC serve you better. This takes about 30 seconds.</p>
+    </div>
+    <div style="display:flex;justify-content:center;gap:10px;margin-bottom:10px" id="modal-star-row">
+      ${[1,2,3,4,5].map(n=>`<button class="modal-star-btn" data-val="${n}" style="font-size:38px;background:none;border:none;cursor:pointer;padding:0;line-height:1;transition:transform .15s,opacity .15s;filter:grayscale(1);opacity:.35" onmouseover="modalHighlightStars(${n})" onmouseout="modalResetStars()">★</button>`).join("")}
+    </div>
+    <p id="modal-star-label" style="text-align:center;font-size:13px;font-weight:700;color:var(--teal);margin-bottom:16px;min-height:20px"></p>
+    <div class="input-group" style="margin-bottom:16px">
+      <label class="input-label">Comment or suggestion (optional)</label>
+      <textarea class="finput" id="modal-fb-comment" rows="3" placeholder="What's working well? What could be better?" style="resize:vertical"></textarea>
+    </div>
+    <div id="modal-fb-msg" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;font-size:13px"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-ghost btn-sm" id="skip-feedback" style="flex:1;justify-content:center">Maybe Later</button>
+      <button class="btn btn-primary" id="submit-modal-feedback" style="flex:2;justify-content:center">Submit Feedback</button>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+  let selectedRating=0;
+  const starLabels=["","Not happy","It was okay","Pretty good","Really good","Excellent!"];
+  window.modalHighlightStars=n=>{
+    document.querySelectorAll(".modal-star-btn").forEach((b,i)=>{b.style.filter=i<n?"grayscale(0)":"grayscale(1)";b.style.opacity=i<n?"1":".35";b.style.transform=i<n?"scale(1.15)":"scale(1)";});
+    const lbl=document.getElementById("modal-star-label");if(lbl)lbl.textContent=starLabels[n]||"";
+  };
+  window.modalResetStars=()=>{
+    document.querySelectorAll(".modal-star-btn").forEach((b,i)=>{b.style.filter=i<selectedRating?"grayscale(0)":"grayscale(1)";b.style.opacity=i<selectedRating?"1":".35";b.style.transform="scale(1)";});
+    const lbl=document.getElementById("modal-star-label");if(lbl)lbl.textContent=selectedRating>0?starLabels[selectedRating]:"";
+  };
+  document.querySelectorAll(".modal-star-btn").forEach(btn=>{btn.addEventListener("click",()=>{selectedRating=parseInt(btn.dataset.val);modalResetStars();});});
+  document.getElementById("skip-feedback").addEventListener("click",()=>{el.remove();if(onDone)onDone();});
+  document.getElementById("submit-modal-feedback").addEventListener("click",async()=>{
+    if(!selectedRating){const msg=document.getElementById("modal-fb-msg");if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please select a star rating first.";}return;}
+    const comment=document.getElementById("modal-fb-comment")?.value.trim()||"";
+    const btn=document.getElementById("submit-modal-feedback");btn.disabled=true;btn.textContent="Submitting…";
+    await sb.from("feedback").insert({client_id:clientId,client_name:clientName,rating:selectedRating,comment,trigger_type:triggerType});
+    await notifyAdmins(clientName,"⭐ New Feedback",`Rating: ${selectedRating}/5${comment?` | "${comment}"`:""}`)
+    el.remove();
+    if(selectedRating>=4)showGoogleReviewPrompt(onDone);
+    else showFeedbackThanks(selectedRating,onDone);
+  });
+}
+
+function showGoogleReviewPrompt(onDone){
+  const el=document.createElement("div");
+  el.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px;animation:fadeIn .25s ease";
+  el.innerHTML=`<div style="background:var(--white);border-radius:24px;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.2);max-width:420px;width:100%;padding:36px;text-align:center;animation:slideUp .35s cubic-bezier(.34,1.56,.64,1)">
+    <div style="font-size:48px;margin-bottom:16px">🙏</div>
+    <h2 style="font-size:20px;font-weight:900;color:var(--ink);margin-bottom:10px">Thank you so much!</h2>
+    <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:24px">We're really glad things are going well. Would you mind sharing your experience on Google? It helps other investors find us and means a lot to our team.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <a href="${GOOGLE_REVIEW_URL}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="justify-content:center;text-decoration:none" onclick="document.body.querySelector('[style*=fixed][style*=backdrop]')?.remove()">⭐ Share on Google Reviews</a>
+      <button id="skip-google" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:4px">No thanks, maybe later</button>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+  el.querySelector("#skip-google").addEventListener("click",()=>{el.remove();if(onDone)onDone();});
+  el.querySelector("a").addEventListener("click",()=>{setTimeout(()=>{el.remove();if(onDone)onDone();},300);});
+}
+
+function showFeedbackThanks(rating,onDone){
+  const el=document.createElement("div");
+  el.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px;animation:fadeIn .25s ease";
+  const msgs={1:"We're sorry to hear that. Your feedback has been received and our team will review it carefully.",2:"Thank you for letting us know. We'll use your feedback to improve.",3:"Thanks for the honest feedback. We'll keep working to make things better."};
+  el.innerHTML=`<div style="background:var(--white);border-radius:24px;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.2);max-width:400px;width:100%;padding:36px;text-align:center;animation:slideUp .35s cubic-bezier(.34,1.56,.64,1)">
+    <div style="font-size:48px;margin-bottom:16px">${rating<=2?"💙":"😊"}</div>
+    <h2 style="font-size:20px;font-weight:900;color:var(--ink);margin-bottom:10px">Thank you for your feedback</h2>
+    <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:24px">${msgs[rating]||"Thank you. Your feedback has been received."}</p>
+    <button class="btn btn-primary" id="close-thanks" style="justify-content:center;width:100%">Close</button>
+  </div>`;
+  document.body.appendChild(el);
+  el.querySelector("#close-thanks").addEventListener("click",()=>{el.remove();if(onDone)onDone();});
+}
+
 function googleCalLink(label,date,address){
   if(!date)return"#";
   const dt=date.replace(/-/g,"");
@@ -890,96 +974,93 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   let content="";
 
   if(tab==="overview"){
-    // Build key dates timeline (first 5)
-    const dl=(dates||[]).slice(0,5);
+    const dl=(dates||[]).slice(0,6);
+    const pendingTasks=allTasks.filter(t=>t.status!=="complete");
+    const recentMsgs=(msgs||[]).slice(-2);
+    const milestoneTimeline=MILESTONES.map((m,i)=>({m,i,done:i<f.milestone,curr:i===f.milestone,future:i>f.milestone}));
     content=`
-    <div class="welcome-banner">
-      <div>
-        <p style="color:rgba(255,255,255,.6);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Good to see you</p>
-        <h1 style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-.5px">Welcome back, ${client?.name?.split(" ")[0]}! 👋</h1>
-        <p style="color:rgba(255,255,255,.6);font-size:13px;margin-top:4px">${f.address||"Your coordinator will update your property details soon."}</p>
-      </div>
-      <div style="text-align:right">
-        ${badgeEl(f.status)}
-        ${f.closing_date?`<p style="color:rgba(255,255,255,.7);font-size:12px;margin-top:6px">Target Close: <strong style="color:#fff">${fmtDate(f.closing_date)}</strong></p>`:""}
-        ${files.length>1?`<p style="color:rgba(255,255,255,.5);font-size:11px;margin-top:4px">${files.length} active properties</p>`:""}
-      </div>
-    </div>
-    <div class="stat-row">
-      ${[
-        {icon:"📊",bg:"#EBF8FF",label:"File Status",node:badgeEl(f.status)},
-        {icon:"⏰",bg:"#FEFCBF",val:daysLeft===null?"TBD":(daysLeft<0?`${Math.abs(daysLeft)}d overdue`:`${daysLeft} days`),label:"Days to Close",color:daysLeft!==null&&daysLeft<0?"var(--danger)":daysLeft!==null&&daysLeft<=7?"var(--warning)":"var(--ink)"},
-        {icon:"🎯",bg:"#F0FFF4",val:`${pct}%`,label:"Progress",color:"var(--success)"},
-        {icon:"✅",bg:"#FFF5F5",val:`${doneTasks}/${allTasks.length}`,label:"Tasks Done",color:"var(--teal)"},
-      ].map(c=>`<div class="stat-card">
-        <div class="stat-icon" style="background:${c.bg}">${c.icon}</div>
-        ${c.node||`<div class="stat-val" style="color:${c.color||"var(--ink)"}">${c.val}</div>`}
-        <div class="stat-label">${c.label}</div>
-        <div class="stat-arrow">View details →</div>
-      </div>`).join("")}
-    </div>
-    <div class="grid-2">
-      <div>
-        <div class="card card-pad" style="margin-bottom:20px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-            <p style="font-weight:700;font-size:15px;color:var(--ink)">Closing Progress</p>
-            <span style="font-weight:900;font-size:20px;color:var(--teal)">${pct}%</span>
-          </div>
-          <div class="prog-bar" style="margin-bottom:10px"><div class="prog-fill" style="width:${pct}%"></div></div>
-          <p style="font-size:12px;color:var(--muted)">Step ${f.milestone+1} of ${MILESTONES.length} — <strong>${MILESTONES[f.milestone]}</strong></p>
+    <!-- HERO BANNER -->
+    <div class="welcome-banner" style="padding:28px 32px;margin-bottom:20px">
+      <div style="flex:1;min-width:0">
+        <p style="color:rgba(255,255,255,.55);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">Good to see you, ${client?.name?.split(" ")[0]} 👋</p>
+        <h1 style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.3px;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.address||"Property address will appear here"}</h1>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          ${badgeEl(f.status)}
+          <span style="color:rgba(255,255,255,.5);font-size:12px">Coordinator: <strong style="color:rgba(255,255,255,.8)">${f.coordinator}</strong></span>
+          ${files.length>1?`<span style="background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">${files.length} properties</span>`:""}
         </div>
-        ${f.milestone<MILESTONES.length-1?`
-        <div class="card card-pad" style="background:linear-gradient(135deg,var(--sidebar-active),#2D4A5A)">
-          <div style="display:flex;align-items:center;gap:14px">
-            <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">⚡</div>
-            <div>
-              <p style="color:rgba(255,255,255,.55);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">What's Next</p>
-              <p style="color:#fff;font-weight:700;font-size:14px">${MILESTONES[f.milestone+1]}</p>
-              <p style="color:rgba(255,255,255,.45);font-size:12px;margin-top:1px">Currently: ${MILESTONES[f.milestone]}</p>
+      </div>
+      <div style="text-align:center;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:16px 24px;flex-shrink:0">
+        <p style="color:rgba(255,255,255,.5);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Target Close</p>
+        <p style="font-size:28px;font-weight:900;color:#fff;line-height:1;margin-bottom:4px">${daysLeft===null?"TBD":daysLeft<0?Math.abs(daysLeft):daysLeft}</p>
+        <p style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600">${daysLeft===null?"No date set":daysLeft<0?"days overdue":"days to close"}</p>
+        ${f.closing_date?`<p style="font-size:10px;color:rgba(255,255,255,.4);margin-top:4px">${fmtDate(f.closing_date)}</p>`:""}
+      </div>
+    </div>
+    <!-- MILESTONE TIMELINE -->
+    <div class="card card-pad" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <p style="font-weight:700;font-size:15px;color:var(--ink)">Closing Progress</p>
+          <p style="font-size:12px;color:var(--muted);margin-top:2px">Step ${f.milestone+1} of ${MILESTONES.length} — <strong style="color:var(--teal)">${MILESTONES[f.milestone]}</strong></p>
+        </div>
+        <span style="font-size:22px;font-weight:900;color:var(--teal)">${pct}%</span>
+      </div>
+      <div class="prog-bar" style="margin-bottom:18px;height:10px"><div class="prog-fill" style="width:${pct}%"></div></div>
+      <div style="display:flex;align-items:flex-start;overflow-x:auto;padding-bottom:4px">
+        ${milestoneTimeline.map(({m,i,done,curr})=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:64px">
+          <div style="display:flex;align-items:center;width:100%;margin-bottom:8px">
+            ${i>0?`<div style="flex:1;height:2px;background:${done?"var(--teal)":"var(--border)"}"></div>`:`<div style="flex:1"></div>`}
+            <div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;background:${done?"var(--teal)":curr?"var(--sidebar-active)":"var(--white)"};border:2.5px solid ${done?"var(--teal)":curr?"var(--sidebar-active)":"var(--border)"};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:${done||curr?"#fff":"var(--muted)"};box-shadow:${curr?"0 0 0 4px rgba(45,55,72,.12)":"none"};z-index:1">
+              ${done?`<svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>`:i+1}
             </div>
+            ${i<MILESTONES.length-1?`<div style="flex:1;height:2px;background:${done?"var(--teal)":"var(--border)"}"></div>`:`<div style="flex:1"></div>`}
           </div>
-        </div>`:""}
+          <p style="font-size:9px;font-weight:${curr?700:500};color:${done?"var(--muted)":curr?"var(--ink)":"#B0BEC5"};text-align:center;padding:0 2px;line-height:1.3">${m}</p>
+          ${curr?`<div style="width:5px;height:5px;border-radius:50%;background:var(--teal);margin-top:4px"></div>`:""}
+        </div>`).join("")}
       </div>
+      ${f.milestone<MILESTONES.length-1?`<div style="margin-top:14px;padding:10px 14px;background:var(--teal-mist);border-radius:10px;display:flex;align-items:center;gap:10px;border:1px solid var(--teal-light)"><span style="font-size:16px">⚡</span><div><p style="font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">What happens next</p><p style="font-size:13px;font-weight:700;color:var(--ink)">${MILESTONES[f.milestone+1]}</p></div></div>`:""}
+    </div>
+    <!-- TWO COLUMN: Dates + Tasks/Messages -->
+    <div class="grid-2" style="margin-bottom:20px">
       <div class="card card-pad">
-        <p style="font-weight:700;font-size:15px;color:var(--ink);margin-bottom:16px">Milestone Progress</p>
-        <div style="position:relative;width:140px;height:140px;margin:0 auto">
-          <canvas id="donut-chart"></canvas>
-          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
-            <div style="font-size:28px;font-weight:900;color:var(--ink)">${pct}%</div>
-            <div style="font-size:11px;color:var(--muted)">Complete</div>
-          </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <p style="font-weight:700;font-size:14px;color:var(--ink)">📅 Key Dates</p>
+          <button class="ov-nav-btn" data-navto="dates" style="border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--teal)">View all →</button>
         </div>
-        <div style="margin-top:16px">
-          ${[{label:"Completed",val:f.milestone,color:"#3A9DB5"},{label:"Remaining",val:MILESTONES.length-f.milestone-1,color:"#E2E8F0"},{label:"Current",val:1,color:"#2D3748"}].map(r=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:${r.color}"></div><span style="font-size:12px;color:var(--muted)">${r.label}</span></div><span style="font-size:12px;font-weight:700;color:var(--ink)">${r.val}</span></div>`).join("")}
+        ${dl.length===0?`<div style="text-align:center;padding:20px;color:var(--muted)"><p style="font-size:24px;margin-bottom:6px">📅</p><p style="font-size:13px">No key dates added yet.</p></div>`
+        :dl.map(d=>{const days=daysUntil(d.date);const overdue=days!==null&&days<0;const urgent=days!==null&&days<=3&&days>=0;const today=days===0;const bg=overdue?"#FFF5F5":urgent||today?"#FFFDE7":"var(--white)";const border=overdue?"#FED7D7":urgent?"#FFF176":"var(--border)";const dayText=days===null?"":overdue?days*-1+"d overdue":today?"Today!":urgent?days+"d ⚠️":days+"d";const dayColor=overdue?"var(--danger)":urgent||today?"var(--warning)":"var(--muted)";return`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-radius:10px;border:1px solid ${border};background:${bg};margin-bottom:6px"><div><p style="font-size:13px;font-weight:600;color:var(--ink)">${d.label}</p><p style="font-size:11px;color:var(--muted);margin-top:1px">${fmtDate(d.date)}</p></div><div style="display:flex;align-items:center;gap:6px">${dayText?`<span style="font-size:11px;font-weight:700;color:${dayColor}">${dayText}</span>`:""}${d.date?`<a href="${googleCalLink(d.label,d.date,f.address)}" target="_blank" rel="noopener noreferrer" style="font-size:10px;font-weight:700;color:var(--teal);background:var(--teal-mist);padding:3px 8px;border-radius:6px;text-decoration:none">+ Cal</a>`:""}</div></div>`;}).join("")}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="card card-pad" style="flex:1">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <p style="font-weight:700;font-size:14px;color:var(--ink)">✅ Active Tasks</p>
+            <button class="ov-nav-btn" data-navto="tasks" style="border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--teal)">View all →</button>
+          </div>
+          ${pendingTasks.length===0?`<div style="text-align:center;padding:14px;color:var(--muted)"><p style="font-size:22px;margin-bottom:4px">🎉</p><p style="font-size:12px">All caught up!</p></div>`:pendingTasks.slice(0,3).map(t=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)"><div style="width:16px;height:16px;border-radius:5px;border:2px solid var(--teal-light);flex-shrink:0"></div><p style="font-size:13px;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.text}</p>${taskStatusBadge(t.status||"pending")}</div>`).join("")}
+          ${pendingTasks.length>3?`<p style="font-size:11px;color:var(--muted);margin-top:8px">+${pendingTasks.length-3} more</p>`:""}
+        </div>
+        <div class="card card-pad">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <p style="font-weight:700;font-size:14px;color:var(--ink)">💬 Messages</p>
+            <button class="ov-nav-btn" data-navto="messages" style="border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--teal)">Open →</button>
+          </div>
+          ${recentMsgs.length===0?`<p style="font-size:12px;color:var(--muted)">No messages yet.</p>`:recentMsgs.map(m=>`<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><div style="width:24px;height:24px;border-radius:50%;background:${m.is_admin?"var(--teal)":"var(--sidebar-active)"};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0">${initials(m.from_name)}</div><div style="flex:1;min-width:0"><p style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:1px">${m.from_name} · ${m.date}</p><p style="font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.text}</p></div></div>`).join("")}
         </div>
       </div>
     </div>
-    ${dl.length>0?`
-    <div class="card card-pad" style="margin-top:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <p style="font-weight:700;font-size:15px;color:var(--ink)">📅 Key Dates Timeline</p>
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding-bottom:8px">
-        ${dl.map((d,i)=>{const days=daysUntil(d.date);const done=days!==null&&days<0;const curr=days===0;return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:80px">
-          <div style="display:flex;align-items:center;width:100%">
-            ${i>0?`<div style="flex:1;height:3px;background:${done?"var(--teal)":"var(--border)"};margin-top:7px"></div>`:"<div style='flex:1'></div>"}
-            <div style="width:14px;height:14px;border-radius:50%;flex-shrink:0;background:${done?"var(--teal)":curr?"var(--sidebar-active)":"var(--white)"};border:3px solid ${done?"var(--teal)":curr?"var(--sidebar-active)":"var(--border)"};box-shadow:${curr?"0 0 0 4px rgba(45,55,72,.15)":"none"}"></div>
-            ${i<dl.length-1?`<div style="flex:1;height:3px;background:${done?"var(--teal)":"var(--border)"};margin-top:7px"></div>`:"<div style='flex:1'></div>"}
-          </div>
-          <p style="font-size:10px;font-weight:700;color:var(--ink);margin-top:8px;text-align:center;padding:0 4px">${d.label}</p>
-          <p style="font-size:10px;color:var(--muted);text-align:center">${fmtDate(d.date)}</p>
-        </div>`}).join("")}
-      </div>
-    </div>`:""}
-    <div class="card card-pad" style="margin-top:20px">
+    <!-- COORDINATOR STRIP -->
+    <div class="card card-pad">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <p style="font-weight:700;font-size:14px;color:var(--ink)">Your Coordinator: ${f.coordinator}</p>
-          <p style="font-size:12px;color:var(--muted)">Available Mon–Fri during business hours</p>
+          <p style="font-weight:700;font-size:14px;color:var(--ink)">Your Coordinator — ${f.coordinator}</p>
+          <p style="font-size:12px;color:var(--muted)">Available Mon–Fri · Responds within one business day</p>
         </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
           <a href="tel:3305834443" class="btn btn-ghost btn-sm">📞 (330) 583-4443</a>
           <a href="mailto:info@closeflowtc.com" class="btn btn-teal btn-sm">✉ Email Us</a>
+          <button class="btn btn-sm" style="background:var(--main-bg);color:var(--ink);border:1px solid var(--border)" class="ov-nav-btn" data-navto="messages">💬 Message</button>
         </div>
       </div>
     </div>`;
@@ -1209,6 +1290,9 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   else if(tab==="account"){
     const c=client||{};
+    // Load client's past feedback
+    const{data:myFeedback}=await sb.from("feedback").select("*").eq("client_id",clientId).order("created_at",{ascending:false}).limit(5);
+    const fb=myFeedback||[];
     content=`<div style="display:grid;gap:20px">
       <div class="card card-pad">
         <p style="font-weight:700;font-size:16px;color:var(--ink);margin-bottom:20px">👤 My Profile</p>
@@ -1239,6 +1323,34 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
         </div>
         <div id="pw-msg" style="display:none;margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px"></div>
         <button class="btn btn-primary" id="save-pw" style="margin-top:4px">Update Password</button>
+      </div>
+      <!-- FEEDBACK CARD -->
+      <div class="card card-pad">
+        <p style="font-weight:700;font-size:16px;color:var(--ink);margin-bottom:4px">⭐ Rate Your Experience</p>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6">How is everything going? Your feedback helps us improve the experience for every client.</p>
+        <!-- Star rating -->
+        <div style="display:flex;gap:8px;margin-bottom:16px" id="star-row">
+          ${[1,2,3,4,5].map(n=>`<button class="star-btn" data-val="${n}" style="font-size:32px;background:none;border:none;cursor:pointer;padding:0;line-height:1;transition:transform .15s;filter:grayscale(1);opacity:.4" onmouseover="highlightStars(${n})" onmouseout="resetStars()">★</button>`).join("")}
+        </div>
+        <div id="star-label" style="font-size:13px;color:var(--muted);margin-bottom:14px;min-height:18px"></div>
+        <div class="input-group" style="margin-bottom:12px">
+          <label class="input-label">Comment or Suggestion (optional)</label>
+          <textarea class="finput" id="fb-comment" rows="3" placeholder="Tell us what's working well, what could be better, or any suggestions you have…" style="resize:vertical"></textarea>
+        </div>
+        <div id="fb-msg" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;font-size:13px"></div>
+        <button class="btn btn-primary" id="submit-feedback">Submit Feedback</button>
+        <!-- Past feedback -->
+        ${fb.length>0?`
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">Your Previous Feedback</p>
+          ${fb.map(f2=>`<div style="padding:10px 14px;background:var(--main-bg);border-radius:10px;border:1px solid var(--border);margin-bottom:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:14px">${"★".repeat(f2.rating)}${"☆".repeat(5-f2.rating)}</span>
+              <span style="font-size:11px;color:var(--muted)">${new Date(f2.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
+            </div>
+            ${f2.comment?`<p style="font-size:13px;color:var(--ink);line-height:1.5">${f2.comment}</p>`:""}
+          </div>`).join("")}
+        </div>`:""}
       </div>
       <div class="card card-pad">
         <p style="font-weight:700;font-size:16px;color:var(--ink);margin-bottom:8px">✨ Portal Tour</p>
@@ -1381,12 +1493,19 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   // Donut chart
   if(tab==="overview"){
-    const ctx=qs("#donut-chart");
-    if(ctx)new Chart(ctx,{type:"doughnut",data:{datasets:[{data:[f.milestone,1,MILESTONES.length-f.milestone-1],backgroundColor:["#3A9DB5","#2D3748","#E2E8F0"],borderWidth:0,hoverOffset:4}]},options:{cutout:"72%",plugins:{legend:{display:false}},animation:{animateScale:true}}});
+    // No chart initialization needed in Section V dashboard
   }
 
   // Stat arrows
-  qsa(".stat-arrow").forEach((el,i)=>{const tabs=["overview","dates","tasks","milestones"];el.addEventListener("click",()=>{if(tabs[i])renderClient(clientId,fileId,tabs[i]);});});
+  // Overview navigation buttons (Section V dashboard)
+  qsa(".ov-nav-btn").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const target=btn.dataset.navto;
+      if(target)renderClient(clientId,fileId,target);
+    });
+  });
+
+  // stat-arrow handler removed — Section V uses inline onclick navigation
 
   const ml=qs("#msg-list");if(ml)ml.scrollTop=ml.scrollHeight;
 
@@ -1449,8 +1568,42 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     setTimeout(()=>renderClient(clientId,fileId,"documents"),1200);
   });
   on("#restart-tour","click",()=>startTour(clientId,renderClient));
+
+  // Account tab star rating
+  if(tab==="account"){
+    let acctSelectedRating=0;
+    const starLabels2=["","Not happy","It was okay","Pretty good","Really good","Excellent!"];
+    window.highlightStars=n=>{
+      document.querySelectorAll(".star-btn").forEach((b,i)=>{b.style.filter=i<n?"grayscale(0)":"grayscale(1)";b.style.opacity=i<n?"1":".4";b.style.transform=i<n?"scale(1.1)":"scale(1)";});
+      const lbl=qs("#star-label");if(lbl)lbl.textContent=starLabels2[n]||"";
+    };
+    window.resetStars=()=>{
+      document.querySelectorAll(".star-btn").forEach((b,i)=>{b.style.filter=i<acctSelectedRating?"grayscale(0)":"grayscale(1)";b.style.opacity=i<acctSelectedRating?"1":".4";b.style.transform="scale(1)";});
+      const lbl=qs("#star-label");if(lbl)lbl.textContent=acctSelectedRating>0?starLabels2[acctSelectedRating]:"";
+    };
+    qsa(".star-btn").forEach(btn=>{btn.addEventListener("click",()=>{acctSelectedRating=parseInt(btn.dataset.val);resetStars();});});
+    on("#submit-feedback","click",async()=>{
+      if(!acctSelectedRating){const msg=qs("#fb-msg");if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please select a star rating first.";}return;}
+      const comment=qs("#fb-comment")?.value.trim()||"";
+      btnLoad("submit-feedback",true,"Submitting…");
+      await sb.from("feedback").insert({client_id:clientId,client_name:client.name,rating:acctSelectedRating,comment,trigger_type:"manual"});
+      await notifyAdmins(client.name,"⭐ New Feedback",`Rating: ${acctSelectedRating}/5${comment?` | "${comment}"`:""}`)
+      btnLoad("submit-feedback",false,"✓ Submitted!","Submit Feedback");
+      const msg=qs("#fb-msg");if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Thank you! Your feedback has been received.";}
+      if(acctSelectedRating>=4){setTimeout(()=>showGoogleReviewPrompt(null),1200);}
+      setTimeout(()=>renderClient(clientId,fileId,"account"),2000);
+    });
+  }
   if(isFirstLoad&&client&&!client.has_seen_welcome){showWelcomeModal(client.name,clientId,()=>{},()=>startTour(clientId,renderClient));}
   if(isTourStep&&TOUR_ACTIVE){setTimeout(()=>renderTourOverlay(TOUR_STEP,TOUR_STEPS.length,renderClient),200);}
+
+  // Pulse feedback trigger — fires when file just reached Closed milestone
+  if(isFirstLoad&&f.milestone===MILESTONES.length-1&&f.status==="Closed"){
+    const{data:existingFb}=await sb.from("feedback").select("id").eq("client_id",clientId).limit(1);
+    if(!existingFb||existingFb.length===0){
+      setTimeout(()=>showFeedbackModal(clientId,client.name,"post_closing",null),2000);
+    }
+  }
 }
 
 // ── ADMIN PANEL ───────────────────────────────────────────────────────────────
@@ -1599,6 +1752,31 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         ${!c.used?`<button class="copy-ic-btn btn btn-ghost btn-sm" data-code="${c.code}" style="flex-shrink:0">📋 Copy</button>`:""}
         <button class="del-ic-btn btn btn-danger btn-sm" data-icid="${c.id}" style="flex-shrink:0;padding:4px 10px">×</button>
       </div>`).join("")}
+    </div>`;
+  }
+
+
+  else if(tab==="feedback"){
+    const{data:allFeedback}=await sb.from("feedback").select("*").order("created_at",{ascending:false});
+    const fbAll=allFeedback||[];
+    const avgRating=fbAll.length>0?(fbAll.reduce((s,f2)=>s+f2.rating,0)/fbAll.length).toFixed(1):0;
+    const dist=[5,4,3,2,1].map(r=>({r,count:fbAll.filter(f2=>f2.rating===r).length}));
+    mainContent=`<div class="admin-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div>
+          <p style="font-weight:800;font-size:16px;color:var(--ink)">⭐ Client Feedback</p>
+          <p style="font-size:12px;color:var(--muted);margin-top:2px">${fbAll.length} submission${fbAll.length!==1?"s":""} total</p>
+        </div>
+        ${fbAll.length>0?`<div style="text-align:center;background:var(--teal-mist);border:1px solid var(--teal-light);border-radius:12px;padding:12px 20px"><p style="font-size:28px;font-weight:900;color:var(--teal);line-height:1">${avgRating}</p><p style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Avg Rating</p></div>`:""}
+      </div>
+      ${fbAll.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">⭐</p><p style="font-weight:600">No feedback yet.</p></div>`:""}
+      ${fbAll.length>0?`
+      <div style="background:var(--main-bg);border-radius:12px;padding:16px;margin-bottom:20px;border:1px solid var(--border)">
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">Rating Distribution</p>
+        ${dist.map(({r,count})=>{const pct=fbAll.length>0?Math.round((count/fbAll.length)*100):0;return`<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span style="font-size:12px;font-weight:700;color:var(--ink);width:16px">${r}</span><span style="color:#F6AD55;font-size:12px">★</span><div style="flex:1;height:8px;background:var(--border);border-radius:50px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${r>=4?"var(--teal)":r===3?"var(--warning)":"var(--danger)"};border-radius:50px"></div></div><span style="font-size:12px;color:var(--muted);width:48px;text-align:right">${count} (${pct}%)</span></div>`;}).join("")}
+      </div>
+      <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">All Submissions</p>
+      ${fbAll.map(f2=>`<div style="border:1px solid ${f2.rating>=4?"var(--teal-light)":f2.rating===3?"#FFF176":"#FED7D7"};border-radius:12px;padding:14px 16px;margin-bottom:10px;background:${f2.rating>=4?"var(--teal-mist)":f2.rating===3?"#FFFDE7":"#FFF5F5"}"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px">${avatarEl(f2.client_name,"",32)}<div><p style="font-size:13px;font-weight:700;color:var(--ink)">${f2.client_name}</p><p style="font-size:10px;color:var(--muted)">${new Date(f2.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</p></div></div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px;color:#F6AD55">${"★".repeat(f2.rating)}${"☆".repeat(5-f2.rating)}</span><span style="font-size:10px;font-weight:700;background:${f2.trigger_type==="post_closing"?"#C6F6D5":"#EDF2F7"};color:${f2.trigger_type==="post_closing"?"#276749":"var(--muted)"};padding:2px 8px;border-radius:20px">${f2.trigger_type==="post_closing"?"Post-Closing":"Manual"}</span></div></div>${f2.comment?`<p style="font-size:13px;color:var(--ink);line-height:1.6;padding:8px 12px;background:rgba(255,255,255,.6);border-radius:8px">"${f2.comment}"</p>`:`<p style="font-size:12px;color:var(--muted);font-style:italic">No comment.</p>`}</div>`).join("")}`:""}
     </div>`;
   }
 
@@ -1976,7 +2154,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <div style="width:36px;height:36px;border-radius:10px;background:${adminBellBg};border:1.5px solid ${adminBellBorder};display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='${adminBellBg}'">🔔</div>
     ${adminBellBadge}
   </div>`;
-  const adminNavItems=[{id:"overview",icon:"📊",label:"Dashboard"},...(isSuperAdmin?[{id:"team",icon:"👥",label:"Team Management"},{id:"invite-codes",icon:"🔑",label:"Invite Codes"}]:[])];
+  const adminNavItems=[{id:"overview",icon:"📊",label:"Dashboard"},{id:"feedback",icon:"⭐",label:"Feedback"},...(isSuperAdmin?[{id:"team",icon:"👥",label:"Team Management"},{id:"invite-codes",icon:"🔑",label:"Invite Codes"}]:[])];
 
   show(`<div class="admin-wrap">
     <div class="admin-sidebar">
@@ -2205,7 +2383,12 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const ctx=qs("#admin-donut");
     if(ctx)new Chart(ctx,{type:"doughnut",data:{labels:["Active","Pending","On Hold","Closed"],datasets:[{data:[active||1,pending,onHold,closed],backgroundColor:["#3A9DB5","#D69E2E","#E53E3E","#38A169"],borderWidth:0,hoverOffset:4}]},options:{cutout:"72%",plugins:{legend:{display:false}},animation:{animateScale:true}}});
   }
-  qsa("[data-nav]").forEach(btn=>btn.addEventListener("click",()=>{if(btn.dataset.nav==="team")renderAdmin(null,null,"team");else if(btn.dataset.nav==="invite-codes")renderAdmin(null,null,"invite-codes");else renderAdmin(null,null,"overview");}));
+  qsa("[data-nav]").forEach(btn=>btn.addEventListener("click",()=>{
+    if(btn.dataset.nav==="team")renderAdmin(null,null,"team");
+    else if(btn.dataset.nav==="invite-codes")renderAdmin(null,null,"invite-codes");
+    else if(btn.dataset.nav==="feedback")renderAdmin(null,null,"feedback");
+    else renderAdmin(null,null,"overview");
+  }));
   qsa(".sidebar-client-btn[data-cid]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(btn.dataset.cid,null,"client")));
   qsa(".client-row[data-cid]").forEach(row=>row.addEventListener("click",()=>renderAdmin(row.dataset.cid,null,"client")));
   qsa("[data-atab]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(activeClientId,activeFileId,btn.dataset.atab)));
