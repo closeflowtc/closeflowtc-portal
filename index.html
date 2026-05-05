@@ -348,6 +348,50 @@ const TOUR_STEPS=[
   },
 ];
 let SESSION=null,TOUR_ACTIVE=false,TOUR_STEP=0,TOUR_CLIENT_ID=null,ACTIVE_FILE_ID=null;
+
+// ── SESSION PERSISTENCE ──────────────────────────────────────────────────────
+function saveSession(){
+  if(SESSION){
+    try{localStorage.setItem("cftc_session",JSON.stringify(SESSION));
+        if(ACTIVE_FILE_ID)localStorage.setItem("cftc_active_file",ACTIVE_FILE_ID);
+        else localStorage.removeItem("cftc_active_file");
+    }catch(e){}
+  }else{
+    localStorage.removeItem("cftc_session");
+    localStorage.removeItem("cftc_active_file");
+  }
+}
+
+async function loadSession(){
+  try{
+    const raw=localStorage.getItem("cftc_session");
+    if(!raw)return false;
+    const sess=JSON.parse(raw);
+    if(!sess||!sess.role)return false;
+    // Re-verify user still exists and isn't deleted
+    if(sess.role==="admin"&&sess.admin?.id){
+      const{data}=await sb.from("admins").select("*").eq("id",sess.admin.id).single();
+      if(!data)return false;
+      SESSION={role:"admin",admin:data};
+      return true;
+    }
+    if(sess.role==="client"&&sess.client?.id){
+      const{data}=await sb.from("clients").select("*").eq("id",sess.client.id).is("deleted_at",null).single();
+      if(!data)return false;
+      SESSION={role:"client",client:data};
+      ACTIVE_FILE_ID=localStorage.getItem("cftc_active_file")||null;
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+function clearSession(){
+  SESSION=null;
+  ACTIVE_FILE_ID=null;
+  localStorage.removeItem("cftc_session");
+  localStorage.removeItem("cftc_active_file");
+}
 const app=document.getElementById("app");
 const loading=document.getElementById("loading");
 
@@ -895,12 +939,13 @@ async function doLogin(){
   const email=qs("#f-email")?.value.trim(),pass=qs("#f-pass")?.value;
   btnLoad("do-login",true,"Signing in…");
   const{data:adminData}=await sb.from("admins").select("*").eq("email",email).eq("password",pass).single();
-  if(adminData){SESSION={role:"admin",admin:adminData};await checkUpcomingReminders();await renderAdmin();return;}
+  if(adminData){SESSION={role:"admin",admin:adminData};saveSession();await checkUpcomingReminders();await renderAdmin();return;}
   const{data,error}=await sb.from("clients").select("*").eq("email",email).eq("password",pass).is("deleted_at",null).single();
   if(error||!data){renderLogin("login","Incorrect email or password.");return;}
   SESSION={role:"client",client:data};
   const{data:files}=await sb.from("files").select("*").eq("client_id",data.id).order("created_at");
   ACTIVE_FILE_ID=(files&&files.length)?files[0].id:null;
+  saveSession();
   await checkUpcomingReminders();
   await renderClient(data.id,ACTIVE_FILE_ID,"overview",false,false);
   await checkIncidentBanner();
@@ -926,6 +971,7 @@ async function doRegister(){
   await markInviteCodeUsed(inviteResult.id);
   SESSION={role:"client",client};
   ACTIVE_FILE_ID=newFile?.id||null;
+  saveSession();
   await renderClient(client.id,ACTIVE_FILE_ID,"overview",false,false);
   showOnboardingModal(client.id,async()=>{
     const{data:updated}=await sb.from("clients").select("*").eq("id",client.id).single();
@@ -1175,8 +1221,8 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       ${activeTasks.map(t=>{
         const isPendingReview=t.status==="pending_review";
         const hasUpload=t.doc_url&&t.doc_url.length>0;
-        const requiresUpload=!hasUpload&&t.status==="pending"&&t.requires_upload!==false;
-        // If task doesn't require upload and isn't in review, client can self-check
+        // Only require upload if explicitly flagged true
+        const requiresUpload=t.requires_upload===true&&!hasUpload&&t.status==="pending";
         const canSelfCheck=!isPendingReview&&!requiresUpload;
         return`<div class="task-item" style="flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px" id="task-wrap-${t.id}">
           <div style="display:flex;align-items:flex-start;gap:12px">
@@ -1568,11 +1614,12 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   // Nav
   qsa(".client-nav-btn").forEach(btn=>btn.addEventListener("click",()=>renderClient(clientId,fileId,btn.dataset.tab)));
-  on("#signout","click",()=>{SESSION=null;renderLogin();});
+  on("#signout","click",()=>{clearSession();renderLogin();});
 
   // Property selector
   on("#property-select","change",async e=>{
     ACTIVE_FILE_ID=e.target.value;
+    saveSession();
     await renderClient(clientId,e.target.value,tab);
   });
 
@@ -2840,7 +2887,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 </div>`);
 
   // Events
-  on("#admin-signout","click",()=>{SESSION=null;renderLogin();});
+  on("#admin-signout","click",()=>{clearSession();renderLogin();});
 
   // Service incident controls
   on("#post-incident-btn","click",()=>{
@@ -3330,7 +3377,27 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   qsa(".del-admin").forEach(btn=>btn.addEventListener("click",async()=>{if(!confirm("Remove this team member?"))return;await sb.from("admins").delete().eq("id",btn.dataset.aid);await renderAdmin(null,null,"team");}));
 }
 
-renderLogin();
+// ── APP INIT ──────────────────────────────────────────────────────────────────
+async function bootApp(){
+  const restored=await loadSession();
+  if(restored&&SESSION){
+    if(SESSION.role==="admin"){
+      await checkUpcomingReminders();
+      await renderAdmin();
+      return;
+    }
+    if(SESSION.role==="client"&&SESSION.client){
+      const{data:files}=await sb.from("files").select("*").eq("client_id",SESSION.client.id).order("created_at");
+      if(!ACTIVE_FILE_ID&&files&&files.length)ACTIVE_FILE_ID=files[0].id;
+      await checkUpcomingReminders();
+      await renderClient(SESSION.client.id,ACTIVE_FILE_ID);
+      return;
+    }
+  }
+  renderLogin();
+}
+
+bootApp();
 </script>
 </body>
 </html>
