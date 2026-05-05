@@ -263,22 +263,17 @@ async function checkIncidentBanner(){
   }
 }
 
-const INVITE="FLOW2026"; // fallback only — unique codes take priority
-
 async function validateInviteCode(code,email=""){
-  // Check unique codes table — code must match AND email must match (if assigned)
-  const{data:uc}=await sb.from("invite_codes").select("*").eq("code",code.toUpperCase()).eq("used",false).single();
-  if(uc){
-    // If code has an assigned email, it must match the registering email
-    const assignedEmail=uc.assigned_email||uc.assigned_to||"";
-    if(assignedEmail&&email&&assignedEmail.toLowerCase()!==email.toLowerCase()){
-      return{valid:false,reason:"This invite code was issued to a different email address."};
-    }
-    return{valid:true,id:uc.id,type:"unique",assignedTo:assignedEmail};
+  // Only unique codes from the database are accepted — no global fallback
+  const{data:uc}=await sb.from("invite_codes").select("*").eq("code",code.toUpperCase()).single();
+  if(!uc)return{valid:false,reason:"Invalid invite code. Contact your coordinator."};
+  if(uc.used)return{valid:false,reason:"This invite code has already been used. Contact your coordinator for a new one."};
+  // If code has an assigned email, it must match the registering email
+  const assignedEmail=uc.assigned_email||uc.assigned_to||"";
+  if(assignedEmail&&email&&assignedEmail.toLowerCase()!==email.toLowerCase()){
+    return{valid:false,reason:"This invite code was issued to a different email address."};
   }
-  // Fall back to global code
-  if(code.toUpperCase()===INVITE)return{valid:true,id:null,type:"global"};
-  return{valid:false,reason:"Invalid invite code. Contact your coordinator."};
+  return{valid:true,id:uc.id,type:"unique",assignedTo:assignedEmail};
 }
 
 async function markInviteCodeUsed(id){
@@ -1689,8 +1684,8 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   const allClients=clients||[];
 
   // Determine active client
-  const isGlobalView=["overview","deals","pipeline","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","team","feedback","invite-codes"].includes(tab);
-  const GLOBAL_TABS_ARR=["overview","deals","pipeline","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","team","feedback","invite-codes"];
+  const isGlobalView=["overview","deals","pipeline","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","team","feedback","invite-codes","settings"].includes(tab);
+  const GLOBAL_TABS_ARR=["overview","deals","pipeline","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","team","feedback","invite-codes","settings"];
   const activeClientId=selClientId||(allClients[0]?.id)||null;
   let clientFiles=[];
   if(activeClientId&&!isGlobalView){
@@ -2177,6 +2172,64 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     </div>`;
   }
 
+  else if(tab==="settings"){
+    // Check current incident state
+    const{data:lastIncident}=await sb.from("notifications").select("*").eq("client_id","00000000-0000-0000-0000-000000000000").order("created_at",{ascending:false}).limit(1).single();
+    const hasActiveIncident=lastIncident&&!lastIncident.is_read;
+    mainContent=`
+    <div style="margin-bottom:20px">
+      <h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Settings</h1>
+      <p style="font-size:13px;color:var(--muted)">Service incident notices and portal-wide controls</p>
+    </div>
+
+    <!-- Current incident status -->
+    ${hasActiveIncident?`<div class="admin-card" style="border-left:4px solid ${lastIncident.type==="incident"?"var(--red)":"var(--green)"};background:${lastIncident.type==="incident"?"#FFF5F5":"#F0FFF4"};margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div style="flex:1;min-width:0">
+          <p style="font-size:11px;font-weight:700;color:${lastIncident.type==="incident"?"var(--red)":"var(--green)"};text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Currently Active — ${lastIncident.type==="incident"?"⚠️ Incident":"✅ Restored"}</p>
+          <p style="font-size:14px;color:var(--ink);font-weight:600">${lastIncident.message}</p>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px">Posted ${new Date(lastIncident.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true})}</p>
+        </div>
+        <button id="clear-incident-btn" class="btn btn-ghost btn-sm">Clear Banner</button>
+      </div>
+    </div>`:""}
+
+    <!-- Service Incident Controls -->
+    <div class="admin-card" style="border-left:4px solid var(--warning);background:linear-gradient(135deg,var(--white),#FFFDF5)">
+      <div style="margin-bottom:16px">
+        <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:4px">🚨 Service Incident Banner</p>
+        <p style="font-size:12px;color:var(--muted);line-height:1.6">Post a notice that appears as a banner at the top of every client's portal. Use this when something is wrong (delays, outages, system issues) so clients aren't left wondering.</p>
+      </div>
+
+      <!-- Type selector -->
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <button id="post-incident-btn" class="btn btn-sm" data-mode="incident" style="background:#FFF5F5;color:var(--danger);border:1.5px solid #FED7D7;font-weight:700">⚠️ Post Incident Notice</button>
+        <button id="post-restored-btn" class="btn btn-sm" data-mode="restored" style="background:#F0FFF4;color:var(--success);border:1.5px solid #C6F6D5;font-weight:700">✅ Post Service Restored</button>
+      </div>
+
+      <!-- Message input (always visible) -->
+      <div class="input-group" style="margin-bottom:12px">
+        <label class="input-label">Message to display</label>
+        <textarea class="dark-input" id="incident-msg-input" rows="2" placeholder="e.g. We are experiencing delays with document uploads. Working on it now." style="resize:vertical"></textarea>
+      </div>
+
+      <div id="incident-form-msg" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;font-size:13px"></div>
+
+      <button class="btn btn-primary" id="send-incident">Post Banner</button>
+
+      <!-- Examples -->
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Quick Examples</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="example-msg-btn btn btn-ghost btn-sm" data-mode="incident" data-msg="We are experiencing delays with document uploads. Working on it now." style="font-size:11px">Upload delays</button>
+          <button class="example-msg-btn btn btn-ghost btn-sm" data-mode="incident" data-msg="Email notifications are temporarily delayed. Files are still being processed." style="font-size:11px">Email delays</button>
+          <button class="example-msg-btn btn btn-ghost btn-sm" data-mode="restored" data-msg="All systems are restored. Thank you for your patience." style="font-size:11px">All restored</button>
+          <button class="example-msg-btn btn btn-ghost btn-sm" data-mode="restored" data-msg="Document uploads are back to normal. We apologize for the inconvenience." style="font-size:11px">Uploads restored</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
   else if(tab==="feedback"){
     const{data:allFeedback}=await sb.from("feedback").select("*").order("created_at",{ascending:false});
     const fbAll=allFeedback||[];
@@ -2649,7 +2702,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <div style="width:36px;height:36px;border-radius:10px;background:${adminBellBg};border:1.5px solid ${adminBellBorder};display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='${adminBellBg}'">🔔</div>
     ${adminBellBadge}
   </div>`;
-  const GLOBAL_TABS=["overview","deals","pipeline","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","team","feedback","invite-codes"];
+  const GLOBAL_TABS=["overview","deals","pipeline","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","team","feedback","invite-codes","settings"];
   const isGlobalTab=GLOBAL_TABS.includes(tab)||tab==="overview";
   const adminNavItems=[
     {id:"overview",icon:"⊞",label:"Dashboard",section:"main"},
@@ -2664,7 +2717,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     {id:"reports",icon:"≡",label:"Reports",section:"tools"},
     {id:"team",icon:"⊕",label:"Team",section:"tools"},
     {id:"feedback",icon:"★",label:"Feedback",section:"tools"},
-    ...(isSuperAdmin?[{id:"invite-codes",icon:"⬡",label:"Invite Codes",section:"tools"}]:[]),
+    ...(isSuperAdmin?[{id:"invite-codes",icon:"⬡",label:"Invite Codes",section:"tools"},{id:"settings",icon:"⚙",label:"Settings",section:"tools"}]:[]),
   ];
 
   show(`<div class="admin-wrap">
@@ -2760,26 +2813,54 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
   // Service incident controls
   on("#post-incident-btn","click",()=>{
-    const f2=qs("#incident-input");if(f2){f2.style.display="block";}
-    const inp=qs("#incident-msg-input");if(inp)inp.placeholder="Describe the issue briefly…";
-    qs("#post-incident-btn")?.setAttribute("data-mode","incident");
+    qs("#post-incident-btn")?.setAttribute("data-active","true");
+    qs("#post-restored-btn")?.removeAttribute("data-active");
+    const ib=qs("#post-incident-btn");if(ib){ib.style.background="var(--danger)";ib.style.color="#fff";ib.style.borderColor="var(--danger)";}
+    const rb=qs("#post-restored-btn");if(rb){rb.style.background="#F0FFF4";rb.style.color="var(--success)";rb.style.borderColor="#C6F6D5";}
+    const inp=qs("#incident-msg-input");if(inp){inp.placeholder="Describe the issue briefly…";inp.focus();}
   });
   on("#post-restored-btn","click",()=>{
-    const f2=qs("#incident-input");if(f2){f2.style.display="block";}
-    const inp=qs("#incident-msg-input");if(inp)inp.placeholder="e.g. All systems are restored. We apologize for any inconvenience.";
-    qs("#post-incident-btn")?.setAttribute("data-mode","restored");
+    qs("#post-restored-btn")?.setAttribute("data-active","true");
+    qs("#post-incident-btn")?.removeAttribute("data-active");
+    const rb=qs("#post-restored-btn");if(rb){rb.style.background="var(--success)";rb.style.color="#fff";rb.style.borderColor="var(--success)";}
+    const ib=qs("#post-incident-btn");if(ib){ib.style.background="#FFF5F5";ib.style.color="var(--danger)";ib.style.borderColor="#FED7D7";}
+    const inp=qs("#incident-msg-input");if(inp){inp.placeholder="e.g. All systems are restored. We apologize for any inconvenience.";inp.focus();}
   });
+  qsa(".example-msg-btn").forEach(btn=>btn.addEventListener("click",()=>{
+    const mode=btn.dataset.mode;
+    const msgText=btn.dataset.msg;
+    const inp=qs("#incident-msg-input");if(inp)inp.value=msgText;
+    if(mode==="incident")qs("#post-incident-btn")?.click();
+    else qs("#post-restored-btn")?.click();
+  }));
   on("#send-incident","click",async()=>{
-    const msg=qs("#incident-msg-input")?.value.trim();
-    const mode=qs("#post-incident-btn")?.getAttribute("data-mode")||"incident";
-    if(!msg)return;
+    const msgText=qs("#incident-msg-input")?.value.trim();
+    const formMsg=qs("#incident-form-msg");
+    const incidentActive=qs("#post-incident-btn")?.getAttribute("data-active")==="true";
+    const restoredActive=qs("#post-restored-btn")?.getAttribute("data-active")==="true";
+    if(!incidentActive&&!restoredActive){
+      if(formMsg){formMsg.style.display="block";formMsg.style.background="#FFF5F5";formMsg.style.color="var(--danger)";formMsg.textContent="Please select either Incident or Restored first.";}
+      return;
+    }
+    if(!msgText){
+      if(formMsg){formMsg.style.display="block";formMsg.style.background="#FFF5F5";formMsg.style.color="var(--danger)";formMsg.textContent="Please write a message before posting.";}
+      return;
+    }
+    const mode=incidentActive?"incident":"restored";
     btnLoad("send-incident",true,"Posting…");
-    const text=mode==="incident"?`⚠️ Service Notice: ${msg}`:`✅ Service Restored: ${msg}`;
+    // Mark older incidents as read so the new one is the active one
+    await sb.from("notifications").update({is_read:true}).eq("client_id","00000000-0000-0000-0000-000000000000").eq("is_read",false);
+    const text=mode==="incident"?`⚠️ Service Notice: ${msgText}`:`✅ Service Restored: ${msgText}`;
     await sb.from("notifications").insert({client_id:"00000000-0000-0000-0000-000000000000",file_id:null,message:text,type:mode,is_read:false});
-    btnLoad("send-incident",false,"✓ Posted!","Post Notice");
-    const f2=qs("#incident-input");if(f2)f2.style.display="none";
+    btnLoad("send-incident",false,"✓ Posted!","Post Banner");
+    if(formMsg){formMsg.style.display="block";formMsg.style.background="#F0FFF4";formMsg.style.color="#276749";formMsg.textContent=`Banner is now live on every client portal. Refresh client view to see it.`;}
+    setTimeout(()=>renderAdmin(null,null,"settings"),1800);
   });
-  on("#cancel-incident","click",()=>{const f2=qs("#incident-input");if(f2)f2.style.display="none";});
+  on("#clear-incident-btn","click",async()=>{
+    btnLoad("clear-incident-btn",true,"Clearing…");
+    await sb.from("notifications").update({is_read:true}).eq("client_id","00000000-0000-0000-0000-000000000000").eq("is_read",false);
+    await renderAdmin(null,null,"settings");
+  });
 
   // Invite code controls
   on("#regen-code","click",()=>{
@@ -2976,7 +3057,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   }
   qsa("[data-nav]").forEach(btn=>btn.addEventListener("click",()=>{
     const t=btn.dataset.nav;
-    const globalTabs=["overview","deals","pipeline","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","team","feedback","invite-codes"];
+    const globalTabs=["overview","deals","pipeline","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","team","feedback","invite-codes","settings"];
     if(globalTabs.includes(t))renderAdmin(null,null,t);
     else renderAdmin(null,null,"overview");
   }));
