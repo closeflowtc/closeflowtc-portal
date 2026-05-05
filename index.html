@@ -254,12 +254,25 @@ async function checkIncidentBanner(){
   const inc=data[0];
   const banner=document.getElementById("incident-banner");
   if(!banner)return;
-  if(inc.type==="incident"&&!inc.is_read){
+  // Show the latest incident — admin clears via "Clear Banner" which marks is_read=true
+  if(inc.is_read){
+    banner.className="incident-banner";
+    banner.innerHTML="";
+    return;
+  }
+  // Check if user has dismissed this specific incident this session
+  const dismissedKey="incident_dismissed_"+inc.id;
+  if(sessionStorage.getItem(dismissedKey)){
+    banner.className="incident-banner";
+    banner.innerHTML="";
+    return;
+  }
+  if(inc.type==="incident"){
     banner.className="incident-banner active";
-    banner.innerHTML=`<span>⚠️</span><span>${inc.message}</span><button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
-  }else if(inc.type==="restored"&&!inc.is_read){
+    banner.innerHTML=`<span>⚠️</span><span>${inc.message}</span><button onclick="sessionStorage.setItem('${dismissedKey}','1');this.parentElement.classList.remove('active');this.parentElement.innerHTML='';" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
+  }else if(inc.type==="restored"){
     banner.className="incident-banner active restored";
-    banner.innerHTML=`<span>✅</span><span>${inc.message}</span><button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
+    banner.innerHTML=`<span>✅</span><span>${inc.message}</span><button onclick="sessionStorage.setItem('${dismissedKey}','1');this.parentElement.classList.remove('active');this.parentElement.innerHTML='';" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
   }
 }
 
@@ -1448,8 +1461,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       <div id="incident-banner" class="incident-banner"></div>
       <div class="topbar" style="background:var(--sidebar-active);border-bottom:1px solid rgba(255,255,255,.08);padding:0 24px">
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png" style="height:26px;width:auto;filter:brightness(10)" alt="CloseFlow TC"/>
-          <span style="font-size:12px;font-weight:800;color:#fff;letter-spacing:.04em;text-transform:uppercase">CloseFlow TC</span>
+          <img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png" style="height:32px;width:auto;filter:brightness(10)" alt="CloseFlow TC"/>
         </div>
         <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:5px 14px;flex:1;max-width:360px;margin:0 20px">
           <span style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600;flex-shrink:0">Property:</span>
@@ -1663,6 +1675,9 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   }
   if(isFirstLoad&&client&&!client.has_seen_welcome){showWelcomeModal(client.name,clientId,()=>{},()=>startTour(clientId,renderClient));}
   if(isTourStep&&TOUR_ACTIVE){setTimeout(()=>renderTourOverlay(TOUR_STEP,TOUR_STEPS.length,renderClient),200);}
+
+  // Check service incident banner on every render
+  await checkIncidentBanner();
 
   // Pulse feedback trigger — fires when file just reached Closed milestone
   if(isFirstLoad&&f.milestone===MILESTONES.length-1&&f.status==="Closed"){
