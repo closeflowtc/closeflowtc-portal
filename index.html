@@ -265,13 +265,20 @@ async function checkIncidentBanner(){
 
 const INVITE="FLOW2026"; // fallback only — unique codes take priority
 
-async function validateInviteCode(code){
-  // Check unique codes table first
+async function validateInviteCode(code,email=""){
+  // Check unique codes table — code must match AND email must match (if assigned)
   const{data:uc}=await sb.from("invite_codes").select("*").eq("code",code.toUpperCase()).eq("used",false).single();
-  if(uc)return{valid:true,id:uc.id,type:"unique",assignedTo:uc.assigned_to};
+  if(uc){
+    // If code has an assigned email, it must match the registering email
+    const assignedEmail=uc.assigned_email||uc.assigned_to||"";
+    if(assignedEmail&&email&&assignedEmail.toLowerCase()!==email.toLowerCase()){
+      return{valid:false,reason:"This invite code was issued to a different email address."};
+    }
+    return{valid:true,id:uc.id,type:"unique",assignedTo:assignedEmail};
+  }
   // Fall back to global code
   if(code.toUpperCase()===INVITE)return{valid:true,id:null,type:"global"};
-  return{valid:false};
+  return{valid:false,reason:"Invalid invite code. Contact your coordinator."};
 }
 
 async function markInviteCodeUsed(id){
@@ -898,8 +905,8 @@ async function doRegister(){
   if(!name||!email||!pass){renderLogin("register","Please fill in all required fields.");return;}
   if(pass!==confirm){renderLogin("register","Passwords don't match.");return;}
   btnLoad("do-reg",true,"Verifying…");
-  const inviteResult=await validateInviteCode(code);
-  if(!inviteResult.valid){renderLogin("register","Invalid invite code. Contact your coordinator.");return;}
+  const inviteResult=await validateInviteCode(code,email);
+  if(!inviteResult.valid){renderLogin("register",inviteResult.reason||"Invalid invite code. Contact your coordinator.");return;}
   btnLoad("do-reg",true,"Creating account…");
   const{data:exists}=await sb.from("clients").select("id").eq("email",email).is("deleted_at",null).single();
   if(exists){renderLogin("register","An account with this email already exists.");return;}
@@ -1878,42 +1885,71 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   else if(tab==="invite-codes"){
     const{data:codes}=await sb.from("invite_codes").select("*").order("created_at",{ascending:false});
     const ic=codes||[];
-    function genCode(){return"CF"+Math.random().toString(36).slice(2,7).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();}
-    mainContent=`<div class="admin-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    const freshCode="CF"+Math.random().toString(36).slice(2,6).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();
+    const activeCount=ic.filter(c=>!c.used).length;
+    mainContent=`<div style="display:grid;gap:20px">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <p style="font-weight:800;font-size:16px;color:var(--ink)">🔑 Invite Codes</p>
-          <p style="font-size:12px;color:var(--muted);margin-top:2px">Each code is one-time use. Generate one per new client before they register.</p>
+          <h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">🔑 Invite Codes</h1>
+          <p style="font-size:13px;color:var(--muted)">Generate a unique code for each new client. Tied to their email — only they can use it.</p>
         </div>
-        <button class="btn btn-primary btn-sm" id="gen-code-btn">+ Generate New Code</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:12px;color:var(--muted)">${activeCount} active · ${ic.filter(c=>c.used).length} used</span>
+        </div>
       </div>
-      <!-- Generate form -->
-      <div id="gen-code-form" style="display:none;background:var(--teal-mist);border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid var(--teal-light)">
-        <p style="font-weight:700;font-size:13px;color:var(--ink);margin-bottom:12px">New Invite Code</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <div class="input-group" style="margin-bottom:0"><label class="input-label">Assign to (client name)</label><input class="finput" id="ic-name" placeholder="e.g. John Smith"/></div>
-          <div class="input-group" style="margin-bottom:0"><label class="input-label">Code (auto-generated)</label><input class="finput" id="ic-code" style="font-weight:700;letter-spacing:2px;text-transform:uppercase" placeholder="Click generate"/></div>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost btn-sm" id="regen-code">🔄 New Code</button>
-          <button class="btn btn-teal btn-sm" id="save-ic">Save Code</button>
-          <button class="btn btn-ghost btn-sm" id="cancel-ic">Cancel</button>
-        </div>
-        <div id="ic-msg" style="display:none;font-size:12px;margin-top:10px;padding:8px 12px;border-radius:8px"></div>
-      </div>
-      <!-- Code list -->
-      ${ic.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">🔑</p><p>No invite codes yet. Generate one above.</p></div>`
-      :ic.map(c=>`<div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px;border:1px solid ${c.used?"var(--border)":"var(--teal-light)"};background:${c.used?"var(--main-bg)":"var(--teal-mist)"};margin-bottom:8px">
-        <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-            <p style="font-weight:800;font-size:15px;color:${c.used?"var(--muted)":"var(--ink)"};letter-spacing:2px;font-family:monospace">${c.code}</p>
-            ${c.used?`<span style="font-size:10px;font-weight:700;background:#EDF2F7;color:var(--muted);padding:2px 8px;border-radius:20px">Used</span>`:`<span style="font-size:10px;font-weight:700;background:var(--teal);color:#fff;padding:2px 8px;border-radius:20px">Active</span>`}
+
+      <!-- Generate form — always visible, clean card -->
+      <div class="admin-card" style="margin-bottom:0;border:1.5px solid var(--teal-light);background:linear-gradient(135deg,var(--teal-mist),var(--white))">
+        <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:4px">Generate New Invite Code</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:18px">Enter the client's email. A unique code is ready — save it and share it with them.</p>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-bottom:12px">
+          <div class="input-group" style="margin-bottom:0">
+            <label class="input-label">Client Email Address *</label>
+            <input class="finput" id="ic-email" type="email" placeholder="client@example.com" style="font-size:14px"/>
           </div>
-          <p style="font-size:11px;color:var(--muted)">${c.assigned_to?`For: ${c.assigned_to} · `:""} Created ${new Date(c.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</p>
+          <div class="input-group" style="margin-bottom:0">
+            <label class="input-label">Generated Code</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input class="finput" id="ic-code" value="${freshCode}" style="font-weight:800;letter-spacing:3px;text-transform:uppercase;font-size:15px;color:var(--teal-dark);background:var(--white);width:160px" readonly/>
+              <button id="regen-code" class="btn btn-ghost btn-sm" title="Generate new code">🔄</button>
+            </div>
+          </div>
         </div>
-        ${!c.used?`<button class="copy-ic-btn btn btn-ghost btn-sm" data-code="${c.code}" style="flex-shrink:0">📋 Copy</button>`:""}
-        <button class="del-ic-btn btn btn-danger btn-sm" data-icid="${c.id}" style="flex-shrink:0;padding:4px 10px">×</button>
-      </div>`).join("")}
+        <div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px">
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Email message preview</p>
+          <p style="font-size:12px;color:var(--ink);line-height:1.7" id="ic-preview">Hi — your CloseFlow TC portal is ready. Register at <strong>portal.closeflowtc.com</strong> using your email and this invite code: <strong id="ic-preview-code">${freshCode}</strong></p>
+        </div>
+        <div id="ic-msg" style="display:none;margin-bottom:10px;padding:10px 14px;border-radius:10px;font-size:13px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="save-ic">Generate &amp; Save Code</button>
+          <button class="btn btn-ghost btn-sm" id="copy-invite-msg">📋 Copy Message</button>
+        </div>
+      </div>
+
+      <!-- Code list -->
+      <div class="admin-card" style="margin-bottom:0">
+        <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:14px">All Codes</p>
+        ${ic.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">🔑</p><p>No codes yet. Generate one above.</p></div>`
+        :ic.map(c=>`<div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:12px;border:1px solid ${c.used?"var(--border)":"var(--teal-light)"};background:${c.used?"var(--bg)":"var(--teal-mist)"};margin-bottom:8px;transition:all .2s">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+              <p style="font-weight:800;font-size:15px;color:${c.used?"var(--muted)":"var(--ink)"};letter-spacing:2px;font-family:monospace">${c.code}</p>
+              ${c.used
+                ?`<span style="font-size:10px;font-weight:700;background:#EDF2F7;color:var(--muted);padding:2px 8px;border-radius:20px">Used</span>`
+                :`<span style="font-size:10px;font-weight:700;background:var(--teal);color:#fff;padding:2px 8px;border-radius:20px">Active</span>`}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              ${(c.assigned_email||c.assigned_to)?`<span style="font-size:12px;color:var(--teal-dark);font-weight:600">✉ ${c.assigned_email||c.assigned_to}</span>`:""}
+              <span style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            ${!c.used?`<button class="copy-ic-btn btn btn-ghost btn-sm" data-code="${c.code}" data-email="${c.assigned_email||c.assigned_to||""}">📋 Copy Code</button>`:""}
+            <button class="del-ic-btn btn btn-danger btn-sm" data-icid="${c.id}" style="padding:4px 10px">×</button>
+          </div>
+        </div>`).join("")}
+      </div>
     </div>`;
   }
 
@@ -2746,26 +2782,44 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   on("#cancel-incident","click",()=>{const f2=qs("#incident-input");if(f2)f2.style.display="none";});
 
   // Invite code controls
-  on("#gen-code-btn","click",()=>{
-    const f2=qs("#gen-code-form");if(f2)f2.style.display="block";
-    const ic=qs("#ic-code");if(ic)ic.value="CF"+Math.random().toString(36).slice(2,7).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();
+  on("#regen-code","click",()=>{
+    const newCode="CF"+Math.random().toString(36).slice(2,6).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();
+    const ic=qs("#ic-code");if(ic)ic.value=newCode;
+    const prev=qs("#ic-preview-code");if(prev)prev.textContent=newCode;
   });
-  on("#regen-code","click",()=>{const ic=qs("#ic-code");if(ic)ic.value="CF"+Math.random().toString(36).slice(2,7).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();});
-  on("#cancel-ic","click",()=>{const f2=qs("#gen-code-form");if(f2)f2.style.display="none";});
+  on("#copy-invite-msg","click",()=>{
+    const email=qs("#ic-email")?.value.trim()||"[client email]";
+    const code=qs("#ic-code")?.value||"";
+    const msg=`Hi — your CloseFlow TC portal is ready.\n\nRegister at portal.closeflowtc.com using your email address (${email}) and this invite code:\n\n${code}\n\nIf you have any questions, reply to this email or call us at (330) 583-4443.\n\nThe CloseFlow TC Team`;
+    navigator.clipboard.writeText(msg);
+    const btn=qs("#copy-invite-msg");if(btn){btn.textContent="✓ Copied!";setTimeout(()=>btn.textContent="📋 Copy Message",2000);}
+  });
   on("#save-ic","click",async()=>{
-    const name=qs("#ic-name")?.value.trim();
+    const email=qs("#ic-email")?.value.trim();
     const code=qs("#ic-code")?.value.trim().toUpperCase();
     const msg=qs("#ic-msg");
-    if(!code){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please generate a code first.";}return;}
+    if(!email){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please enter the client's email address.";}return;}
+    if(!email.includes("@")){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please enter a valid email address.";}return;}
+    // Check for duplicate active code for same email
+    const{data:existing}=await sb.from("invite_codes").select("id").eq("assigned_email",email).eq("used",false);
+    if(existing&&existing.length>0){if(msg){msg.style.display="block";msg.style.background="#FFFDE7";msg.style.color="var(--yellow)";msg.textContent=`An active code already exists for ${email}. Delete it first if you need a new one.`;}return;}
     btnLoad("save-ic",true,"Saving…");
-    await sb.from("invite_codes").insert({code,assigned_to:name||"",used:false});
-    await renderAdmin(null,null,"invite-codes");
+    await sb.from("invite_codes").insert({code,assigned_to:email,assigned_email:email,used:false});
+    btnLoad("save-ic",false,"✓ Saved!","Generate & Save Code");
+    if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent=`Code ${code} created for ${email}. Copy the message above and send it to them.`;}
+    setTimeout(()=>renderAdmin(null,null,"invite-codes"),1500);
   });
   qsa(".copy-ic-btn").forEach(btn=>{
     btn.addEventListener("click",()=>{
-      navigator.clipboard.writeText(btn.dataset.code);
+      const code=btn.dataset.code;
+      const email=btn.dataset.email;
+      const text=email
+        ?`Your CloseFlow TC invite code is: ${code}\n\nRegister at portal.closeflowtc.com using your email (${email}) and this code.`
+        :code;
+      navigator.clipboard.writeText(text);
+      const orig=btn.textContent;
       btn.textContent="✓ Copied!";
-      setTimeout(()=>btn.textContent="📋 Copy",1800);
+      setTimeout(()=>btn.textContent=orig,2000);
     });
   });
   qsa(".del-ic-btn").forEach(btn=>{
