@@ -623,6 +623,24 @@ function googleCalLink(label,date,address){
   return`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dt}/${dt}&details=${details}`;
 }
 
+// ── SIGNOUT ANIMATION ─────────────────────────────────────────────────────────
+function animatedSignOut(){
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(15,30,38,.85);backdrop-filter:blur(8px);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;animation:fadeIn .3s ease";
+  overlay.innerHTML=`
+    <div style="text-align:center">
+      <div class="btn-spinner" style="width:28px;height:28px;border-width:3px;margin:0 auto 16px"></div>
+      <p style="color:#fff;font-size:14px;font-weight:600;letter-spacing:.02em">Signing out...</p>
+      <p style="color:rgba(255,255,255,.4);font-size:12px;margin-top:6px">See you next time</p>
+    </div>`;
+  document.body.appendChild(overlay);
+  setTimeout(()=>{
+    clearSession();
+    overlay.remove();
+    renderLogin();
+  },1200);
+}
+
 // ── TASK STATUS HELPERS ──────────────────────────────────────────────────────
 function taskStatusBadge(status){
   const map={
@@ -1220,45 +1238,67 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       ${tl.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">✅</p><p style="font-weight:600">No tasks assigned yet. Your coordinator will add tasks here as your closing progresses.</p></div>`:""}
       ${activeTasks.map(t=>{
         const isPendingReview=t.status==="pending_review";
-        const hasUpload=t.doc_url&&t.doc_url.length>0;
-        // Only require upload if explicitly flagged true
-        const requiresUpload=t.requires_upload===true&&!hasUpload&&t.status==="pending";
-        const canSelfCheck=!isPendingReview&&!requiresUpload;
-        return`<div class="task-item" style="flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px" id="task-wrap-${t.id}">
-          <div style="display:flex;align-items:flex-start;gap:12px">
-            <div class="task-check ${canSelfCheck?"client-checkable":""} ${t.status==="complete"?"done":""}" data-tid="${t.id}" data-done="${t.status==="complete"}" style="margin-top:2px;flex-shrink:0;${canSelfCheck?"":"cursor:default;opacity:.7"}">
-              ${t.status==="complete"?`<svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`:""}
-            </div>
-            <div style="flex:1;min-width:0">
-              <p style="font-size:14px;color:var(--ink);font-weight:600;margin-bottom:6px">${t.text}</p>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                ${taskStatusBadge(t.status||"pending")}
-                ${hasUpload?`<a href="${t.doc_url}" target="_blank" style="font-size:11px;color:var(--teal);font-weight:600">📎 ${t.doc_name||"View upload"}</a>`:""}
+        const hasDoc=t.doc_url&&t.doc_url.length>0;
+        const needsUpload=t.requires_upload===true;
+
+        // ── TYPE 1: Task requires document upload ──
+        if(needsUpload){
+          return`<div class="task-item" style="flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="width:22px;height:22px;border-radius:7px;border:2px solid #E9D8FD;background:${isPendingReview?"#E9D8FD":hasDoc?"var(--teal)":"transparent"};display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">
+                ${isPendingReview?`<span style="font-size:10px">⏳</span>`:hasDoc?`<svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`:""}
+              </div>
+              <div style="flex:1;min-width:0">
+                <p style="font-size:14px;color:var(--ink);font-weight:600;margin-bottom:6px">${t.text}</p>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  ${isPendingReview
+                    ?`<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:#FAF5FF;color:#553C9A;border:1px solid #E9D8FD">⏳ Pending TC Review</span>`
+                    :hasDoc
+                      ?`<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EBF8FF;color:#2B6CB0">📎 Uploaded</span>`
+                      :`<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:var(--teal-mist);color:var(--teal-dark)">📎 Upload Required</span>`}
+                  ${hasDoc?`<a href="${t.doc_url}" target="_blank" style="font-size:11px;color:var(--teal);font-weight:600">View: ${t.doc_name||"Document"} ↗</a>`:""}
+                </div>
               </div>
             </div>
-          </div>
-          ${isPendingReview?`
-          <div style="background:#FAF5FF;border:1px solid #E9D8FD;border-radius:10px;padding:10px 14px;font-size:12px;color:#553C9A;line-height:1.6">
-            ✅ Your document has been received. Your CloseFlow TC coordinator is reviewing it. You will be notified when it is approved.
-          </div>`:""}
-          ${requiresUpload?`
-          <div style="background:var(--teal-mist);border-radius:10px;padding:12px 14px;border:1px solid var(--teal-light)">
-            <p style="font-size:12px;font-weight:700;color:var(--teal-dark);margin-bottom:8px">📎 This task requires a document upload</p>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input class="finput task-doc-url" data-tid="${t.id}" placeholder="Paste your Google Drive link here" style="flex:1;min-width:200px;font-size:12px;padding:8px 12px"/>
-              <input class="finput task-doc-name" data-tid="${t.id}" placeholder="Document name" style="width:160px;font-size:12px;padding:8px 12px"/>
-              <button class="btn btn-teal btn-sm task-upload-btn" data-tid="${t.id}" style="flex-shrink:0">Submit</button>
+            ${isPendingReview?`
+            <div style="background:#FAF5FF;border:1px solid #E9D8FD;border-radius:10px;padding:12px 14px;font-size:12px;color:#553C9A;line-height:1.6">
+              Your document has been received and your CloseFlow TC coordinator is reviewing it. You will be notified when it is approved or if changes are needed.
+            </div>`:""}
+            ${!hasDoc&&!isPendingReview?`
+            <div style="background:var(--teal-mist);border-radius:12px;padding:14px 16px;border:1px solid var(--teal-light)">
+              <p style="font-size:13px;font-weight:700;color:var(--teal-dark);margin-bottom:10px">📎 Upload your document to complete this task</p>
+              <div class="input-group" style="margin-bottom:8px">
+                <label class="input-label">Google Drive Link</label>
+                <input class="finput task-doc-url" data-tid="${t.id}" placeholder="Paste your Google Drive share link here" style="font-size:13px"/>
+              </div>
+              <div class="input-group" style="margin-bottom:12px">
+                <label class="input-label">Document Name</label>
+                <input class="finput task-doc-name" data-tid="${t.id}" placeholder="e.g. Operating Agreement, Wire Instructions" style="font-size:13px"/>
+              </div>
+              <button class="btn btn-primary task-upload-btn" data-tid="${t.id}">📎 Submit Document</button>
+              <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Upload the document to Google Drive, then paste the share link above. Your coordinator will review it and you will be notified once it is approved.</p>
+            </div>`:""}
+          </div>`;
+        }
+
+        // ── TYPE 2: Regular task — checkbox only ──
+        return`<div class="task-item" style="padding:14px 16px">
+          <div style="display:flex;align-items:flex-start;gap:12px;width:100%">
+            <div class="task-check client-checkable" data-tid="${t.id}" data-done="false" style="margin-top:2px;flex-shrink:0;cursor:pointer"></div>
+            <div style="flex:1;min-width:0">
+              <p style="font-size:14px;color:var(--ink);font-weight:600">${t.text}</p>
+              <p style="font-size:11px;color:var(--muted);margin-top:4px">${taskStatusBadge("pending")} <span style="margin-left:4px">Check the box when complete</span></p>
             </div>
-            <p style="font-size:11px;color:var(--muted);margin-top:6px">Share your document via Google Drive and paste the link above. Your coordinator will review it.</p>
-          </div>`:""}
+          </div>
         </div>`;
       }).join("")}
       ${doneTasks2.length>0?`
         <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
           <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Completed</p>
-          ${doneTasks2.map(t=>`<div class="task-item" style="opacity:.55">
-            <div class="task-check done"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
+          ${doneTasks2.map(t=>`<div class="task-item" style="opacity:.5;padding:10px 16px">
+            <div class="task-check done" style="flex-shrink:0"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
             <p style="font-size:14px;color:var(--muted);text-decoration:line-through;flex:1">${t.text}</p>
+            ${t.doc_url?`<a href="${t.doc_url}" target="_blank" style="font-size:11px;color:var(--teal)">📎 ${t.doc_name||"Doc"}</a>`:""}
             ${taskStatusBadge("complete")}
           </div>`).join("")}
         </div>`:""}
@@ -1614,7 +1654,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   // Nav
   qsa(".client-nav-btn").forEach(btn=>btn.addEventListener("click",()=>renderClient(clientId,fileId,btn.dataset.tab)));
-  on("#signout","click",()=>{clearSession();renderLogin();});
+  on("#signout","click",()=>animatedSignOut());
 
   // Property selector
   on("#property-select","change",async e=>{
@@ -1644,16 +1684,19 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   on("#send-msg","click",async()=>{const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;btnLoad("send-msg",true,"Sending…");await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);input.value="";await renderClient(clientId,fileId,"messages");});
   on("#msg-input","keydown",async e=>{if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);e.target.value="";await renderClient(clientId,fileId,"messages");});
 
-  // Client-checkable tasks (no upload needed) — let the client mark them done
+  // ── TASK HANDLERS ───────────────────────────────────────────────────────────
+  // Type 1: Checkbox tasks — client clicks to mark complete
   qsa(".task-check.client-checkable").forEach(el=>{
     el.addEventListener("click",async()=>{
       const tid=el.dataset.tid;
-      const done=el.dataset.done==="true";
-      await sb.from("tasks").update({status:done?"pending":"complete",done:!done}).eq("id",tid);
+      el.style.background="var(--teal)";el.style.borderColor="var(--teal)";
+      el.innerHTML=`<span class="btn-spinner" style="width:10px;height:10px;border-width:1.5px"></span>`;
+      await sb.from("tasks").update({status:"complete",done:true}).eq("id",tid);
       await renderClient(clientId,fileId,"tasks");
     });
   });
-  // Task upload submit buttons (client side)
+
+  // Type 2: Upload tasks — client submits a document
   qsa(".task-upload-btn").forEach(btn=>{
     btn.addEventListener("click",async()=>{
       const tid=btn.dataset.tid;
@@ -2887,7 +2930,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 </div>`);
 
   // Events
-  on("#admin-signout","click",()=>{clearSession();renderLogin();});
+  on("#admin-signout","click",()=>animatedSignOut());
 
   // Service incident controls
   on("#post-incident-btn","click",()=>{
@@ -3202,8 +3245,12 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const text=qs("#task-input")?.value.trim();if(!text)return;
     const requiresUpload=qs("#task-requires-upload")?.value==="true";
     btnLoad("add-task",true,"Adding…");
-    await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false,status:"pending",doc_url:"",doc_name:"",requires_upload:requiresUpload});
-    // Notify client
+    // Try with requires_upload first, fall back without if column doesn't exist
+    let err;
+    ({error:err}=await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false,status:"pending",doc_url:"",doc_name:"",requires_upload:requiresUpload}));
+    if(err){
+      await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false,status:"pending",doc_url:"",doc_name:""});
+    }
     if(client){
       await createNotification(activeClientId,activeFileId,`New task assigned: "${text}"${requiresUpload?" — This task requires a document upload.":""}`,"info");
     }
