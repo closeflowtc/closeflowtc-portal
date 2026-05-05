@@ -2801,12 +2801,23 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     if(!email){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please enter the client's email address.";}return;}
     if(!email.includes("@")){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please enter a valid email address.";}return;}
     // Check for duplicate active code for same email
-    const{data:existing}=await sb.from("invite_codes").select("id").eq("assigned_email",email).eq("used",false);
+    const{data:existing}=await sb.from("invite_codes").select("id").eq("assigned_to",email).eq("used",false);
     if(existing&&existing.length>0){if(msg){msg.style.display="block";msg.style.background="#FFFDE7";msg.style.color="var(--yellow)";msg.textContent=`An active code already exists for ${email}. Delete it first if you need a new one.`;}return;}
     btnLoad("save-ic",true,"Saving…");
-    await sb.from("invite_codes").insert({code,assigned_to:email,assigned_email:email,used:false});
+    // Try with assigned_email first, fall back without it if column doesn't exist
+    let error;
+    ({error}=await sb.from("invite_codes").insert({code,assigned_to:email,assigned_email:email,used:false}));
+    if(error){
+      // Retry without assigned_email in case column hasn't been added yet
+      ({error}=await sb.from("invite_codes").insert({code,assigned_to:email,used:false}));
+    }
+    if(error){
+      btnLoad("save-ic",false,null,"Generate & Save Code");
+      if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent=`Error saving code: ${error.message}`;}
+      return;
+    }
     btnLoad("save-ic",false,"✓ Saved!","Generate & Save Code");
-    if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent=`Code ${code} created for ${email}. Copy the message above and send it to them.`;}
+    if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent=`Code ${code} created for ${email}. Copy the message above and share it.`;}
     setTimeout(()=>renderAdmin(null,null,"invite-codes"),1500);
   });
   qsa(".copy-ic-btn").forEach(btn=>{
