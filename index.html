@@ -249,30 +249,31 @@ async function checkUpcomingReminders(){
 
 // ── SERVICE INCIDENT STATE ────────────────────────────────────────────────────
 async function checkIncidentBanner(){
-  const{data}=await sb.from("notifications").select("*").eq("client_id","00000000-0000-0000-0000-000000000000").order("created_at",{ascending:false}).limit(1);
-  if(!data||!data.length)return;
-  const inc=data[0];
+  const{data}=await sb.from("service_incidents").select("*").eq("active",true).order("created_at",{ascending:false}).limit(1);
   const banner=document.getElementById("incident-banner");
   if(!banner)return;
-  // Show the latest incident — admin clears via "Clear Banner" which marks is_read=true
-  if(inc.is_read){
+  if(!data||!data.length){
     banner.className="incident-banner";
     banner.innerHTML="";
+    banner.style.display="none";
     return;
   }
+  const inc=data[0];
   // Check if user has dismissed this specific incident this session
   const dismissedKey="incident_dismissed_"+inc.id;
   if(sessionStorage.getItem(dismissedKey)){
     banner.className="incident-banner";
     banner.innerHTML="";
+    banner.style.display="none";
     return;
   }
+  banner.style.display="flex";
   if(inc.type==="incident"){
     banner.className="incident-banner active";
-    banner.innerHTML=`<span>⚠️</span><span>${inc.message}</span><button onclick="sessionStorage.setItem('${dismissedKey}','1');this.parentElement.classList.remove('active');this.parentElement.innerHTML='';" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
-  }else if(inc.type==="restored"){
+    banner.innerHTML=`<span style="font-size:16px">⚠️</span><span style="flex:1">${inc.message}</span><button onclick="sessionStorage.setItem('${dismissedKey}','1');this.parentElement.style.display='none';" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
+  }else{
     banner.className="incident-banner active restored";
-    banner.innerHTML=`<span>✅</span><span>${inc.message}</span><button onclick="sessionStorage.setItem('${dismissedKey}','1');this.parentElement.classList.remove('active');this.parentElement.innerHTML='';" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
+    banner.innerHTML=`<span style="font-size:16px">✅</span><span style="flex:1">${inc.message}</span><button onclick="sessionStorage.setItem('${dismissedKey}','1');this.parentElement.style.display='none';" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">Dismiss</button>`;
   }
 }
 
@@ -1174,9 +1175,12 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       ${activeTasks.map(t=>{
         const isPendingReview=t.status==="pending_review";
         const hasUpload=t.doc_url&&t.doc_url.length>0;
+        const requiresUpload=!hasUpload&&t.status==="pending"&&t.requires_upload!==false;
+        // If task doesn't require upload and isn't in review, client can self-check
+        const canSelfCheck=!isPendingReview&&!requiresUpload;
         return`<div class="task-item" style="flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px" id="task-wrap-${t.id}">
           <div style="display:flex;align-items:flex-start;gap:12px">
-            <div class="task-check ${isPendingReview||hasUpload?"":""}${t.status==="complete"?"done":""}" data-tid="${t.id}" style="margin-top:2px;flex-shrink:0">
+            <div class="task-check ${canSelfCheck?"client-checkable":""} ${t.status==="complete"?"done":""}" data-tid="${t.id}" data-done="${t.status==="complete"}" style="margin-top:2px;flex-shrink:0;${canSelfCheck?"":"cursor:default;opacity:.7"}">
               ${t.status==="complete"?`<svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`:""}
             </div>
             <div style="flex:1;min-width:0">
@@ -1191,7 +1195,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
           <div style="background:#FAF5FF;border:1px solid #E9D8FD;border-radius:10px;padding:10px 14px;font-size:12px;color:#553C9A;line-height:1.6">
             ✅ Your document has been received. Your CloseFlow TC coordinator is reviewing it. You will be notified when it is approved.
           </div>`:""}
-          ${!hasUpload&&t.status==="pending"?`
+          ${requiresUpload?`
           <div style="background:var(--teal-mist);border-radius:10px;padding:12px 14px;border:1px solid var(--teal-light)">
             <p style="font-size:12px;font-weight:700;color:var(--teal-dark);margin-bottom:8px">📎 This task requires a document upload</p>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1495,13 +1499,14 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     panel.style.cssText="position:fixed;top:72px;right:20px;width:360px;max-height:480px;background:var(--white);border-radius:16px;border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.15);z-index:500;overflow:hidden;animation:slideDown .25s cubic-bezier(.4,0,.2,1)";
     const unread=nl.filter(n=>!n.is_read);
     function buildPanel(){
+      const currentUnread=nl.filter(n=>!n.is_read);
       return`<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--white);position:sticky;top:0;z-index:1">
         <div style="display:flex;align-items:center;gap:8px">
           <p style="font-weight:700;font-size:14px;color:var(--ink)">🔔 Notifications</p>
-          ${unread.length>0?`<span style="background:var(--danger);color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px">${unread.length}</span>`:""}
+          ${currentUnread.length>0?`<span style="background:var(--danger);color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px">${currentUnread.length}</span>`:""}
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          ${unread.length>0?`<button id="mark-all-read" style="font-size:11px;font-weight:700;color:var(--teal);background:var(--teal-mist);border:none;border-radius:6px;padding:4px 10px;cursor:pointer">Mark all read</button>`:""}
+          ${currentUnread.length>0?`<button id="mark-all-read" style="font-size:11px;font-weight:700;color:var(--teal);background:var(--teal-mist);border:none;border-radius:6px;padding:4px 10px;cursor:pointer">Mark all read</button>`:""}
           <button onclick="document.getElementById('notif-panel').remove()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
         </div>
       </div>
@@ -1536,6 +1541,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
           const isRead=btn.dataset.read==="true";
           await sb.from("notifications").update({is_read:!isRead}).eq("id",nid);
           const n=nl.find(x=>x.id===nid);if(n){n.is_read=!isRead;}
+          btn.dataset.read=String(!isRead);
           panel.innerHTML=buildPanel();
           wireMarkAll();
           wireToggles();
@@ -1591,6 +1597,15 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   on("#send-msg","click",async()=>{const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;btnLoad("send-msg",true,"Sending…");await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);input.value="";await renderClient(clientId,fileId,"messages");});
   on("#msg-input","keydown",async e=>{if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);e.target.value="";await renderClient(clientId,fileId,"messages");});
 
+  // Client-checkable tasks (no upload needed) — let the client mark them done
+  qsa(".task-check.client-checkable").forEach(el=>{
+    el.addEventListener("click",async()=>{
+      const tid=el.dataset.tid;
+      const done=el.dataset.done==="true";
+      await sb.from("tasks").update({status:done?"pending":"complete",done:!done}).eq("id",tid);
+      await renderClient(clientId,fileId,"tasks");
+    });
+  });
   // Task upload submit buttons (client side)
   qsa(".task-upload-btn").forEach(btn=>{
     btn.addEventListener("click",async()=>{
@@ -2189,8 +2204,9 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
   else if(tab==="settings"){
     // Check current incident state
-    const{data:lastIncident}=await sb.from("notifications").select("*").eq("client_id","00000000-0000-0000-0000-000000000000").order("created_at",{ascending:false}).limit(1).single();
-    const hasActiveIncident=lastIncident&&!lastIncident.is_read;
+    const{data:activeIncidents}=await sb.from("service_incidents").select("*").eq("active",true).order("created_at",{ascending:false}).limit(1);
+    const lastIncident=(activeIncidents&&activeIncidents.length)?activeIncidents[0]:null;
+    const hasActiveIncident=!!lastIncident;
     mainContent=`
     <div style="margin-bottom:20px">
       <h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Settings</h1>
@@ -2863,17 +2879,22 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     }
     const mode=incidentActive?"incident":"restored";
     btnLoad("send-incident",true,"Posting…");
-    // Mark older incidents as read so the new one is the active one
-    await sb.from("notifications").update({is_read:true}).eq("client_id","00000000-0000-0000-0000-000000000000").eq("is_read",false);
-    const text=mode==="incident"?`⚠️ Service Notice: ${msgText}`:`✅ Service Restored: ${msgText}`;
-    await sb.from("notifications").insert({client_id:"00000000-0000-0000-0000-000000000000",file_id:null,message:text,type:mode,is_read:false});
+    // Deactivate any current active incidents
+    await sb.from("service_incidents").update({active:false}).eq("active",true);
+    // Insert the new one
+    const{error}=await sb.from("service_incidents").insert({message:msgText,type:mode,active:true});
+    if(error){
+      btnLoad("send-incident",false,null,"Post Banner");
+      if(formMsg){formMsg.style.display="block";formMsg.style.background="#FFF5F5";formMsg.style.color="var(--danger)";formMsg.textContent=`Error: ${error.message}. Make sure the service_incidents table exists in Supabase.`;}
+      return;
+    }
     btnLoad("send-incident",false,"✓ Posted!","Post Banner");
-    if(formMsg){formMsg.style.display="block";formMsg.style.background="#F0FFF4";formMsg.style.color="#276749";formMsg.textContent=`Banner is now live on every client portal. Refresh client view to see it.`;}
-    setTimeout(()=>renderAdmin(null,null,"settings"),1800);
+    if(formMsg){formMsg.style.display="block";formMsg.style.background="#F0FFF4";formMsg.style.color="#276749";formMsg.textContent=`Banner is now live on every client portal.`;}
+    setTimeout(()=>renderAdmin(null,null,"settings"),1500);
   });
   on("#clear-incident-btn","click",async()=>{
     btnLoad("clear-incident-btn",true,"Clearing…");
-    await sb.from("notifications").update({is_read:true}).eq("client_id","00000000-0000-0000-0000-000000000000").eq("is_read",false);
+    await sb.from("service_incidents").update({active:false}).eq("active",true);
     await renderAdmin(null,null,"settings");
   });
 
@@ -3134,11 +3155,10 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const text=qs("#task-input")?.value.trim();if(!text)return;
     const requiresUpload=qs("#task-requires-upload")?.value==="true";
     btnLoad("add-task",true,"Adding…");
-    const status=requiresUpload?"pending":"pending";
-    await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false,status,doc_url:"",doc_name:""});
+    await sb.from("tasks").insert({client_id:activeClientId,file_id:activeFileId,text,done:false,status:"pending",doc_url:"",doc_name:"",requires_upload:requiresUpload});
     // Notify client
     if(client){
-      await createNotification(activeClientId,activeFileId,`New task assigned: "${text}"${requiresUpload?" — This task requires a document upload.":""}","info`);
+      await createNotification(activeClientId,activeFileId,`New task assigned: "${text}"${requiresUpload?" — This task requires a document upload.":""}`,"info");
     }
     await renderAdmin(activeClientId,activeFileId,"tasks");
   });
@@ -3177,36 +3197,78 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   // Admin notification bell
   on("#admin-notif-bell","click",async()=>{
     const existing=document.getElementById("admin-notif-panel");if(existing){existing.remove();return;}
-    const{data:allNotifs}=await sb.from("notifications").select("*, clients(name)").order("created_at",{ascending:false}).limit(40);
-    await sb.from("notifications").update({is_read:true}).eq("is_read",false);
+    const{data:freshNotifs}=await sb.from("notifications").select("*, clients(name)").order("created_at",{ascending:false}).limit(40);
+    const nl=freshNotifs||[];
     const panel=document.createElement("div");
     panel.id="admin-notif-panel";
-    panel.style.cssText="position:fixed;top:72px;right:20px;width:360px;max-height:440px;background:var(--white);border-radius:16px;border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.15);z-index:500;overflow:hidden;animation:slideUp .2s ease";
-    const nl=allNotifs||[];
-    panel.innerHTML=`<div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <p style="font-weight:700;font-size:14px;color:var(--ink)">🔔 All Notifications</p>
-      <button onclick="document.getElementById('admin-notif-panel').remove()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">×</button>
-    </div>
-    <div style="overflow-y:auto;max-height:370px">
-      ${nl.length===0?`<div style="padding:32px;text-align:center;color:var(--muted)"><p style="font-size:28px;margin-bottom:8px">🔔</p><p style="font-size:13px">No notifications yet.</p></div>`
-      :nl.map(n=>{
-        const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":"ℹ️";
-        const dt=new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true});
-        const clientLabel=n.clients?.name?`<span style="font-size:10px;font-weight:700;background:var(--teal-mist);color:var(--teal-dark);padding:2px 8px;border-radius:20px;margin-left:6px">${n.clients.name}</span>`:"";
-        return`<div style="padding:12px 18px;border-bottom:1px solid var(--border);transition:background .2s" onmouseover="this.style.background='var(--main-bg)'" onmouseout="this.style.background='transparent'">
-          <div style="display:flex;align-items:flex-start;gap:10px">
-            <span style="font-size:16px;flex-shrink:0;margin-top:1px">${ic}</span>
-            <div style="flex:1">
-              <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:3px">
-                <p style="font-size:13px;color:var(--ink);line-height:1.5">${n.message}</p>
-                ${clientLabel}
+    panel.style.cssText="position:fixed;top:72px;right:20px;width:380px;max-height:480px;background:var(--white);border-radius:16px;border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.15);z-index:500;overflow:hidden;animation:slideDown .25s cubic-bezier(.4,0,.2,1)";
+    function buildPanel(){
+      const unread=nl.filter(n=>!n.is_read);
+      return`<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--white);position:sticky;top:0;z-index:1">
+        <div style="display:flex;align-items:center;gap:8px">
+          <p style="font-weight:700;font-size:14px;color:var(--ink)">🔔 All Notifications</p>
+          ${unread.length>0?`<span style="background:var(--danger);color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px">${unread.length}</span>`:""}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${unread.length>0?`<button id="admin-mark-all-read" style="font-size:11px;font-weight:700;color:var(--teal);background:var(--teal-mist);border:none;border-radius:6px;padding:4px 10px;cursor:pointer">Mark all read</button>`:""}
+          <button onclick="document.getElementById('admin-notif-panel').remove()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
+        </div>
+      </div>
+      <div style="overflow-y:auto;max-height:400px">
+        ${nl.length===0?`<div style="padding:32px;text-align:center;color:var(--muted)"><p style="font-size:28px;margin-bottom:8px">🔔</p><p style="font-size:13px">No notifications yet.</p></div>`
+        :nl.map(n=>{
+          const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":"ℹ️";
+          const bg=n.is_read?"var(--white)":"var(--teal-mist)";
+          const dt=new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true});
+          const clientLabel=n.clients?.name?`<span style="font-size:10px;font-weight:700;background:var(--teal-mist);color:var(--teal-dark);padding:2px 8px;border-radius:20px;margin-left:6px">${n.clients.name}</span>`:"";
+          return`<div style="padding:12px 18px;border-bottom:1px solid var(--border);background:${bg};transition:background .2s">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <span style="font-size:16px;flex-shrink:0;margin-top:2px">${ic}</span>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px">
+                  <p style="font-size:13px;color:var(--ink);line-height:1.5">${n.message}</p>
+                  ${clientLabel}
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
+                  <p style="font-size:10px;color:var(--muted)">${dt}</p>
+                  <button class="admin-notif-toggle" data-nid="${n.id}" data-read="${n.is_read}" style="font-size:10px;font-weight:700;color:var(--muted);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">${n.is_read?"Mark unread":"Mark read"}</button>
+                </div>
               </div>
-              <p style="font-size:10px;color:var(--muted)">${dt}</p>
             </div>
-          </div>
-        </div>`;}).join("")}
-    </div>`;
+          </div>`;}).join("")}
+      </div>`;
+    }
+    panel.innerHTML=buildPanel();
     document.body.appendChild(panel);
+    function wireToggles(){
+      panel.querySelectorAll(".admin-notif-toggle").forEach(btn=>{
+        btn.onclick=async(e)=>{
+          e.stopPropagation();
+          const nid=btn.dataset.nid;
+          const isRead=btn.dataset.read==="true";
+          await sb.from("notifications").update({is_read:!isRead}).eq("id",nid);
+          const n=nl.find(x=>x.id===nid);if(n)n.is_read=!isRead;
+          panel.innerHTML=buildPanel();
+          wireMarkAll();
+          wireToggles();
+        };
+      });
+    }
+    function wireMarkAll(){
+      const markAllBtn=panel.querySelector("#admin-mark-all-read");
+      if(markAllBtn){
+        markAllBtn.onclick=async(e)=>{
+          e.stopPropagation();
+          await sb.from("notifications").update({is_read:true}).eq("is_read",false);
+          nl.forEach(n=>n.is_read=true);
+          panel.innerHTML=buildPanel();
+          wireMarkAll();
+          wireToggles();
+        };
+      }
+    }
+    wireToggles();
+    wireMarkAll();
     setTimeout(()=>document.addEventListener("click",function h(e){if(!panel.contains(e.target)&&!document.getElementById("admin-notif-bell")?.contains(e.target)){panel.remove();document.removeEventListener("click",h);}},true),100);
   });
 
