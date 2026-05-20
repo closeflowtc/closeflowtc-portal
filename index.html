@@ -1873,7 +1873,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       </div>
       <div style="display:flex;gap:10px;align-items:center">
         <button class="btn btn-ghost btn-sm" style="font-size:12px">📅 ${new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</button>
-        <button class="btn btn-primary btn-sm" onclick="renderAdmin(null,null,'deals')">+ New Deal</button>
+        <button class="btn btn-primary btn-sm" onclick="showAddDealModal()">+ New Deal</button>
       </div>
     </div>
 
@@ -2870,7 +2870,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <div style="display:flex;align-items:center;gap:14px">
           <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 14px;min-width:220px">
             <span style="color:rgba(255,255,255,.4);font-size:13px">🔍</span>
-            <input placeholder="Search clients..." style="border:none;outline:none;background:transparent;font-size:13px;color:#fff;width:100%" onkeyup="const v=this.value.toLowerCase();document.querySelectorAll('.client-row[data-cid]').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(v)?'flex':'none'})"/>
+            <input placeholder="Search clients..." style="border:none;outline:none;background:transparent;font-size:13px;color:#fff;width:100%" onkeyup="const v=this.value.toLowerCase();document.querySelectorAll('.client-row[data-cid]').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(v)?'flex':'none'});document.querySelectorAll('.sidebar-client-btn[data-cid]').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(v)?'flex':'none'})"/>
           </div>
           <span style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:10px;font-weight:800;padding:4px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.15)">${isSuperAdmin?"⭐ SUPER ADMIN":"👤 ADMIN"}</span>
         </div>
@@ -3143,6 +3143,57 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     btn.addEventListener("click",()=>confirmDeleteClient(btn.dataset.cid,btn.dataset.cname));
   });
 
+  function showAddDealModal(){
+    const overlay=document.createElement("div");
+    overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
+    overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:32px;max-width:480px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease">
+      <div style="margin-bottom:24px">
+        <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:8px">➕ Add New Deal</h3>
+        <p style="font-size:13px;color:var(--muted)">Create a new property/file for a client</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Client</label>
+          <select id="new-deal-client" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--ink);background:#fff">
+            <option value="">Select a client...</option>
+            ${allClients.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Property Address</label>
+          <input id="new-deal-address" type="text" placeholder="123 Main St, City, State" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px"/>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Closing Date</label>
+            <input id="new-deal-closing" type="date" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Coordinator</label>
+            <input id="new-deal-coordinator" type="text" placeholder="John Doe" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px"/>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:24px">
+        <button id="cancel-new-deal" class="btn btn-ghost">Cancel</button>
+        <button id="save-new-deal" class="btn btn-primary">Create Deal</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("#cancel-new-deal").addEventListener("click",()=>overlay.remove());
+    overlay.querySelector("#save-new-deal").addEventListener("click",async()=>{
+      const clientId=qs("#new-deal-client")?.value;
+      const address=qs("#new-deal-address")?.value.trim();
+      const closing_date=qs("#new-deal-closing")?.value||"";
+      const coordinator=qs("#new-deal-coordinator")?.value.trim()||"";
+      if(!clientId){alert("Please select a client");return;}
+      if(!address){alert("Please enter a property address");return;}
+      const{data:newFile,error}=await sb.from("files").insert({client_id:clientId,address,closing_date,coordinator,status:"Active",milestone:"Pre-Contract"}).select().single();
+      if(error){console.error(error);alert("Failed to create deal");return;}
+      overlay.remove();
+      await renderAdmin(clientId,newFile.id,"client");
+    });
+  }
   function confirmDeleteClient(cid,cname){
     const overlay=document.createElement("div");
     overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
@@ -3222,6 +3273,13 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         await createNotification(activeClientId,activeFileId,msg2,"update");
         await notifyClient(client.email,client.name,"📅 Closing Date Updated",`Your closing date has been updated to ${fmtDate(closing_date)}.`,address);
         await notifyAdmins(client.name,"📅 Closing Date Updated",`Closing date changed to ${fmtDate(closing_date)} for ${client.name} — ${address||"TBD"}`);
+        // Sync to key_dates table
+        const{data:existingDate}=await sb.from("key_dates").select("*").eq("file_id",activeFileId).eq("label","Target Closing Date").maybeSingle();
+        if(existingDate){
+          await sb.from("key_dates").update({date:closing_date}).eq("id",existingDate.id);
+        }else{
+          await sb.from("key_dates").insert({client_id:activeClientId,file_id:activeFileId,label:"Target Closing Date",date:closing_date});
+        }
       }
       if(status!==prev.status){
         const msg2=`Your file status has been updated to "${status}" — ${address||"your property"}`;
