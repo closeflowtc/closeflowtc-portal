@@ -524,10 +524,11 @@ function avatarElWithDropdown(name,photo,size=38,isAdmin=false){
   const fs=Math.round(size*.36);
   const avatarHtml=photo?`<img src="${photo}" alt="${name}"/>`:initials(name);
   const dropdownId=isAdmin?"admin-user-dropdown":"user-dropdown";
+  const settingsClick=isAdmin?"renderAdmin(null,null,'settings')":"renderClient(SESSION.client.id,ACTIVE_FILE_ID,'settings')";
   return`<div class="user-avatar-wrapper">
     <div class="avatar" style="width:${size}px;height:${size}px;font-size:${fs}px" onclick="document.getElementById('${dropdownId}').classList.toggle('active');event.stopPropagation()">${avatarHtml}</div>
     <div id="${dropdownId}" class="user-dropdown">
-      <button class="user-dropdown-item" onclick="alert('Profile settings coming soon!')"><span>⚙️</span>Profile Settings</button>
+      <button class="user-dropdown-item" onclick="${settingsClick}"><span>⚙️</span>Profile Settings</button>
       <button class="user-dropdown-item danger" onclick="confirmSignOut()"><span>🚪</span>Sign Out</button>
     </div>
   </div>`;
@@ -551,7 +552,7 @@ function confirmSignOut(){
   document.body.appendChild(overlay);
   overlay.querySelector("#cancel-signout").addEventListener("click",()=>overlay.remove());
   overlay.querySelector("#confirm-signout").addEventListener("click",async()=>{
-    await sb.auth.signOut();
+    clearSession();
     window.location.href="/";
   });
 }
@@ -2265,7 +2266,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       :allFiles.map(deal=>{
         const cl=deal.clients||{};
         const daysToClose=deal.closing_date?Math.round((new Date(deal.closing_date)-today2)/(1000*60*60*24)):null;
-        return`<div class="admin-row client-row" data-cid="${deal.client_id}" style="cursor:pointer;padding:14px;display:flex;align-items:center;gap:12px">
+        return`<div class="admin-row deal-row" data-cid="${deal.client_id}" data-fid="${deal.id}" style="cursor:pointer;padding:14px;display:flex;align-items:center;gap:12px">
           <input type="checkbox" class="bulk-checkbox" data-id="${deal.id}" onclick="event.stopPropagation()"/>
           ${avatarEl(cl.name||"?",cl.photo_url||"",40)}
           <div style="flex:1;min-width:0">
@@ -3400,6 +3401,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   }));
   qsa(".sidebar-client-btn[data-cid]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(btn.dataset.cid,null,"client")));
   qsa(".client-row[data-cid]").forEach(row=>row.addEventListener("click",()=>renderAdmin(row.dataset.cid,null,"client")));
+  qsa(".deal-row[data-cid]").forEach(row=>row.addEventListener("click",()=>renderAdmin(row.dataset.cid,row.dataset.fid,"client")));
   qsa("[data-atab]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(activeClientId,activeFileId,btn.dataset.atab)));
   on("#admin-file-select","change",e=>renderAdmin(activeClientId,e.target.value,tab));
 
