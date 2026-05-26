@@ -177,6 +177,43 @@ input,select,textarea{font-family:inherit}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 @media(max-width:900px){.grid-2{grid-template-columns:1fr}}
 
+/* ── MOBILE RESPONSIVENESS ── */
+@media(max-width:768px){
+  /* Sidebar collapses */
+  .sidebar{width:100%;height:auto;position:relative;flex-direction:row;flex-wrap:wrap;padding:10px;border-right:none;border-bottom:1px solid var(--border)}
+  .main-area{margin-left:0}
+  .portal-wrap{flex-direction:column}
+  /* Topbar */
+  .topbar{padding:0 14px;height:auto;flex-wrap:wrap;gap:8px;padding-top:10px;padding-bottom:10px}
+  /* Content padding */
+  .content{padding:14px}
+  /* Cards */
+  .card-pad{padding:14px 16px}
+  /* Admin layout */
+  .admin-topbar{padding:10px 14px!important;flex-wrap:wrap;gap:8px}
+  /* Hide admin sidebar on mobile — show as top nav */
+  .admin-sidebar{width:100%!important;height:auto!important;position:relative!important;flex-direction:row!important;flex-wrap:wrap!important;padding:10px!important;overflow-x:auto}
+  .admin-main-wrap{margin-left:0!important}
+  /* Stat cards */
+  .stat-grid{grid-template-columns:1fr 1fr!important}
+  /* Tables */
+  .admin-row{flex-wrap:wrap;gap:8px}
+  /* Auth pages */
+  .auth-left{display:none}
+  .auth-right{padding:24px 20px!important}
+  /* Bulk toolbar */
+  .bulk-toolbar{width:calc(100% - 32px);max-width:none;flex-wrap:wrap;justify-content:center;bottom:12px}
+  /* Modals */
+  .modal-overlay>div,div[style*="max-width:480px"],div[style*="max-width:420px"]{max-width:100%!important;margin:0 10px}
+  /* Property selector */
+  .property-selector{max-width:100%}
+}
+@media(max-width:480px){
+  .stat-grid{grid-template-columns:1fr!important}
+  .admin-row .btn{font-size:11px;padding:4px 8px}
+  h1{font-size:16px!important}
+}
+
 /* User Avatar Dropdown */
 .user-avatar-wrapper{position:relative}
 .user-avatar-wrapper .avatar{cursor:pointer;transition:all .2s}
@@ -366,6 +403,24 @@ const TOUR_STEPS=[
   },
 ];
 let SESSION=null,TOUR_ACTIVE=false,TOUR_STEP=0,TOUR_CLIENT_ID=null,ACTIVE_FILE_ID=null;
+let _notifPoll=null;
+
+// Start polling for new notifications every 30 seconds
+function startNotifPolling(clientId){
+  if(_notifPoll)clearInterval(_notifPoll);
+  _notifPoll=setInterval(async()=>{
+    try{
+      const{data:fresh}=await sb.from("notifications").select("*").eq("client_id",clientId).eq("is_read",false).order("created_at",{ascending:false}).limit(20);
+      const unread=(fresh||[]).length;
+      // Update bell badge without full re-render
+      const badge=document.getElementById("notif-badge");
+      const badgeEl2=document.getElementById("notif-badge-count");
+      if(badge){badge.style.display=unread>0?"flex":"none";}
+      if(badgeEl2){badgeEl2.textContent=unread>9?"9+":unread;}
+    }catch(e){}
+  },30000);
+}
+function stopNotifPolling(){if(_notifPoll){clearInterval(_notifPoll);_notifPoll=null;}}
 
 // ── SESSION PERSISTENCE ──────────────────────────────────────────────────────
 function saveSession(){
@@ -427,21 +482,28 @@ function renderTourOverlay(step,total,renderFn){
   const backdrop=document.createElement("div");
   backdrop.id="tour-overlay";
   backdrop.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);z-index:2000;pointer-events:none";
-  // Highlight nav button
+
+  // Spotlight the highlighted nav button
   const navBtns=document.querySelectorAll(".client-nav-btn");
   const activeBtn=Array.from(navBtns).find(b=>b.dataset.tab===s.tab);
+  let tooltipTop="50%",tooltipLeft="50%",tooltipTransform="translate(-50%,-50%)";
   if(activeBtn){
     const r=activeBtn.getBoundingClientRect();
     const hl=document.createElement("div");
-    hl.style.cssText=`position:fixed;top:${r.top-4}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+8}px;border-radius:12px;box-shadow:0 0 0 4px var(--teal);pointer-events:none;z-index:2001`;
+    hl.style.cssText=`position:fixed;top:${r.top-6}px;left:${r.left-8}px;width:${r.width+16}px;height:${r.height+12}px;border-radius:14px;box-shadow:0 0 0 4px var(--teal),0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;z-index:2001`;
     backdrop.appendChild(hl);
+    // Position tooltip to the RIGHT of the sidebar so it doesn't cover content
+    const sidebarWidth=240;
+    tooltipTop=`${Math.max(20,Math.min(r.top,window.innerHeight-480))}px`;
+    tooltipLeft=`${sidebarWidth+24}px`;
+    tooltipTransform="none";
   }
   document.body.appendChild(backdrop);
 
-  // Tooltip card — large, centered, readable
+  // Tooltip card — anchored beside the highlighted item
   const tooltip=document.createElement("div");
   tooltip.id="tour-tooltip";
-  tooltip.style.cssText="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2002;pointer-events:all;width:100%;max-width:540px;padding:0 16px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)";
+  tooltip.style.cssText=`position:fixed;top:${tooltipTop};left:${tooltipLeft};transform:${tooltipTransform};z-index:2002;pointer-events:all;width:100%;max-width:480px;padding:0 16px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)`;
   tooltip.innerHTML=`
   <div style="background:var(--white);border-radius:24px;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:hidden">
     <!-- Header -->
@@ -460,12 +522,10 @@ function renderTourOverlay(step,total,renderFn){
     <!-- Body -->
     <div style="padding:18px 24px 0">
       <p style="font-size:14px;color:var(--ink);line-height:1.8;margin-bottom:16px">${s.body}</p>
-      <!-- What to do now -->
       <div style="background:var(--teal-mist);border-left:4px solid var(--teal);border-radius:0 12px 12px 0;padding:14px 16px;margin-bottom:16px">
         <p style="font-size:11px;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">👉 What to do now</p>
         <p style="font-size:13px;color:var(--ink);line-height:1.7">${s.action}</p>
       </div>
-      <!-- Video placeholder -->
       <div style="background:var(--main-bg);border:1.5px dashed var(--border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px">
         <div style="width:36px;height:36px;border-radius:10px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🎬</div>
         <div>
@@ -535,6 +595,75 @@ function avatarElWithDropdown(name,photo,size=38,isAdmin=false){
 }
 
 // Sign out confirmation modal
+function showReportModal(userName,userEmail){
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
+  overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:32px;max-width:480px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease">
+    <div style="margin-bottom:20px">
+      <div style="width:48px;height:48px;border-radius:14px;background:var(--teal-mist);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:12px">🐞</div>
+      <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:6px">Report an Issue</h3>
+      <p style="font-size:13px;color:var(--muted)">Found a bug or have a suggestion? Send it directly to our team.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Type</label>
+        <select id="report-type" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--ink);background:#fff">
+          <option value="bug">🐛 Bug — Something isn't working</option>
+          <option value="feature">💡 Feature Request — I'd like to see...</option>
+          <option value="question">❓ Question — I need help with...</option>
+          <option value="other">📝 Other</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Description <span style="color:var(--danger)">*</span></label>
+        <textarea id="report-body" rows="4" placeholder="Describe the issue or idea in detail…" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;resize:vertical;font-family:inherit"></textarea>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Page / Section (optional)</label>
+        <input id="report-page" type="text" placeholder="e.g. Deals tab, Registration form…" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px"/>
+      </div>
+    </div>
+    <div id="report-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button id="cancel-report" class="btn btn-ghost">Cancel</button>
+      <button id="send-report" class="btn btn-primary">Send Report</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#cancel-report").addEventListener("click",()=>overlay.remove());
+  overlay.querySelector("#send-report").addEventListener("click",async()=>{
+    const type=overlay.querySelector("#report-type")?.value;
+    const body=overlay.querySelector("#report-body")?.value.trim();
+    const page=overlay.querySelector("#report-page")?.value.trim();
+    const status=overlay.querySelector("#report-status");
+    if(!body){
+      if(status){status.style.display="block";status.style.background="#FFF5F5";status.style.color="var(--danger)";status.textContent="Please describe the issue before sending.";}
+      return;
+    }
+    const btn=overlay.querySelector("#send-report");
+    btn.textContent="Sending…";btn.disabled=true;
+    const subject=`[CloseFlow TC Portal] ${type==="bug"?"Bug Report":type==="feature"?"Feature Request":type==="question"?"Question":"Feedback"} from ${userName||"Portal User"}`;
+    const emailBody=`Type: ${type}\nFrom: ${userName||"Unknown"} (${userEmail||"no email"})\nPage: ${page||"Not specified"}\n\nDescription:\n${body}`;
+    try{
+      await emailjs.send("service_5o6qdri","template_report_issue",{to_email:"info@closeflowtc.com",subject,message:emailBody,from_name:userName||"Portal User",reply_to:userEmail||"info@closeflowtc.com"});
+      if(status){status.style.display="block";status.style.background="#F0FFF4";status.style.color="var(--success)";status.textContent="✅ Report sent! Our team will follow up shortly.";}
+      btn.textContent="✓ Sent!";btn.style.background="var(--success)";
+      setTimeout(()=>overlay.remove(),2000);
+    }catch(err){
+      // Fallback: log to Supabase if email fails
+      try{
+        await sb.from("messages").insert({client_id:null,from_name:userName||"Portal User",text:`[BUG REPORT - ${type}] Page: ${page||"N/A"} | ${body}`,date:new Date().toISOString().slice(0,10),is_admin:false});
+        if(status){status.style.display="block";status.style.background="#F0FFF4";status.style.color="var(--success)";status.textContent="✅ Report logged! Our team will review it.";}
+        btn.textContent="✓ Sent!";btn.style.background="var(--success)";
+        setTimeout(()=>overlay.remove(),2000);
+      }catch(e2){
+        if(status){status.style.display="block";status.style.background="#FFF5F5";status.style.color="var(--danger)";status.textContent="Something went wrong. Please email info@closeflowtc.com directly.";}
+        btn.textContent="Send Report";btn.disabled=false;
+      }
+    }
+  });
+}
+
 function confirmSignOut(){
   const overlay=document.createElement("div");
   overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
@@ -552,6 +681,7 @@ function confirmSignOut(){
   document.body.appendChild(overlay);
   overlay.querySelector("#cancel-signout").addEventListener("click",()=>overlay.remove());
   overlay.querySelector("#confirm-signout").addEventListener("click",async()=>{
+    stopNotifPolling();
     clearSession();
     window.location.href="/";
   });
@@ -1150,6 +1280,7 @@ async function doLogin(){
   ACTIVE_FILE_ID=(files&&files.length)?files[0].id:null;
   saveSession();
   await checkUpcomingReminders();
+  startNotifPolling(data.id);
   await renderClient(data.id,ACTIVE_FILE_ID,"overview",false,false);
   await checkIncidentBanner();
   if(!data.onboarding_complete){showOnboardingModal(data.id,()=>renderClient(data.id,ACTIVE_FILE_ID));return;}
@@ -1730,6 +1861,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
             <p style="font-size:11px;color:var(--muted)">${files.length} ${files.length===1?"property":"properties"}</p>
           </div>
         </div>
+        <button onclick="showReportModal('${client?.name||""}','${client?.email||""}')" class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;margin-bottom:6px">🐞 Report an Issue</button>
         <button id="signout" class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px">Sign Out</button>
       </div>
     </div>
@@ -3020,6 +3152,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
             <p style="font-size:10px;color:rgba(255,255,255,.35)">${isSuperAdmin?"Super Admin":"Coordinator"}</p>
           </div>
         </div>
+        <button onclick="showReportModal('${currentAdmin?.name||"Admin"}','${currentAdmin?.email||""}')" style="width:100%;background:rgba(255,255,255,.05);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px;font-size:11px;font-weight:600;cursor:pointer;margin-top:8px;transition:all .2s" onmouseover="this.style.background='rgba(255,255,255,.1)'" onmouseout="this.style.background='rgba(255,255,255,.05)'">🐞 Report an Issue</button>
       </div>
     </div>
     <!-- RIGHT COLUMN: topbar stacked above main content -->
@@ -3435,6 +3568,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         await createNotification(activeClientId,activeFileId,msg2,"update");
         await notifyClient(client.email,client.name,"📅 Closing Date Updated",`Your closing date has been updated to ${fmtDate(closing_date)}.`,address);
         await notifyAdmins(client.name,"📅 Closing Date Updated",`Closing date changed to ${fmtDate(closing_date)} for ${client.name} — ${address||"TBD"}`);
+        await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"updated the closing date",details:`New date: ${fmtDate(closing_date)}`});
         // Sync to key_dates table
         const{data:existingDate}=await sb.from("key_dates").select("*").eq("file_id",activeFileId).eq("label","Target Closing Date").maybeSingle();
         if(existingDate){
@@ -3447,6 +3581,13 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         const msg2=`Your file status has been updated to "${status}" — ${address||"your property"}`;
         await createNotification(activeClientId,activeFileId,msg2,"update");
         await notifyClient(client.email,client.name,"📋 File Status Updated",`Your file status has been updated to "${status}".`,address);
+        await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"changed the file status",details:`${prev.status} → ${status}`});
+      }
+      if(coordinator!==prev.coordinator){
+        await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"reassigned the coordinator",details:`Now assigned to ${coordinator}`});
+      }
+      if(milestone!==prev.milestone){
+        await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"updated the milestone",details:`Stage: ${MILESTONES[milestone]||milestone}`});
       }
     }
     btnLoad("save-file",false,"✓ Saved!","Save Changes");
@@ -3473,6 +3614,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     }
     if(client){
       await createNotification(activeClientId,activeFileId,`New task assigned: "${text}"${requiresUpload?" — This task requires a document upload.":""}`,"info");
+      await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"added a task",details:text.slice(0,80)});
     }
     await renderAdmin(activeClientId,activeFileId,"tasks");
   });
@@ -3489,6 +3631,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         const taskText=tasks?.find(t=>t.id===tid)?.text||"";
         await createNotification(activeClientId,activeFileId,`Your document for "${taskText}" has been approved. Task marked complete.`,"update");
         await notifyClient(client.email,client.name,"✅ Task Approved",`Your document has been reviewed and approved by your CloseFlow TC coordinator. Task "${taskText}" is now complete.`,f.address);
+        await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"approved a task",details:taskText.slice(0,80)});
       }
       await renderAdmin(activeClientId,activeFileId,"tasks");
     });
@@ -3624,6 +3767,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const input=qs("#admin-msg");const text=input?.value.trim();if(!text)return;
     btnLoad("admin-send",true,"Sending…");
     await sb.from("messages").insert({client_id:activeClientId,from_name:"CloseFlow TC",text,date:new Date().toISOString().slice(0,10),is_admin:true});
+    if(activeFileId)await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"sent a message",details:text.slice(0,80)});
     input.value="";await renderAdmin(activeClientId,activeFileId,"messages");
   });
   on("#admin-msg","keydown",async e=>{if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:activeClientId,from_name:"CloseFlow TC",text,date:new Date().toISOString().slice(0,10),is_admin:true});e.target.value="";await renderAdmin(activeClientId,activeFileId,"messages");});
