@@ -1324,9 +1324,13 @@ async function doRegister(){
   const{data:newFile}=await sb.from("files").insert({client_id:client.id,address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"}).select().single();
   await sb.from("messages").insert({client_id:client.id,from_name:"CloseFlow TC",text:`Welcome, ${name}! Your account is ready. Your coordinator will be in touch shortly.`,date:new Date().toISOString().slice(0,10),is_admin:true});
   await markInviteCodeUsed(inviteResult.id);
+  // Notify the admin team a new client registered
+  await notifyAdmins(name,"🎉 New Client Registered",`${name} (${email}) just created an account using invite code ${code}.`);
   SESSION={role:"client",client};
   ACTIVE_FILE_ID=newFile?.id||null;
   saveSession();
+  await checkUpcomingReminders();
+  startNotifPolling(client.id);
   await renderClient(client.id,ACTIVE_FILE_ID,"overview",false,false);
   showOnboardingModal(client.id,async()=>{
     const{data:updated}=await sb.from("clients").select("*").eq("id",client.id).single();
@@ -2374,7 +2378,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       <!-- Generate form — always visible, clean card -->
       <div class="admin-card" style="margin-bottom:0;border:1.5px solid var(--teal-light);background:linear-gradient(135deg,var(--teal-mist),var(--white))">
         <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:4px">Generate New Invite Code</p>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:18px">Enter the client's email. A unique code is ready — save it and share it with them.</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:18px">Enter the client's email. A unique code is ready — click Generate to save it and send the invite automatically.</p>
         <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-bottom:12px">
           <div class="input-group" style="margin-bottom:0">
             <label class="input-label">Client Email Address *</label>
@@ -2394,8 +2398,8 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         </div>
         <div id="ic-msg" style="display:none;margin-bottom:10px;padding:10px 14px;border-radius:10px;font-size:13px"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-primary" id="save-ic">Generate &amp; Save Code</button>
-          <button class="btn btn-ghost btn-sm" id="copy-invite-msg">📋 Copy Message</button>
+          <button class="btn btn-primary" id="save-ic">📨 Generate &amp; Send Invite</button>
+          <button class="btn btn-ghost btn-sm" id="copy-invite-msg" title="Copy message to send manually if email fails">📋 Copy as Fallback</button>
         </div>
       </div>
 
@@ -3386,11 +3390,10 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const{data:existing}=await sb.from("invite_codes").select("id").eq("assigned_to",email).eq("used",false);
     if(existing&&existing.length>0){if(msg){msg.style.display="block";msg.style.background="#FFFDE7";msg.style.color="var(--yellow)";msg.textContent=`An active code already exists for ${email}. Delete it first if you need a new one.`;}return;}
     btnLoad("save-ic",true,"Saving…");
-    // Try with assigned_email first, fall back without it if column doesn't exist
+    // Save the code
     let error;
     ({error}=await sb.from("invite_codes").insert({code,assigned_to:email,assigned_email:email,used:false}));
     if(error){
-      // Retry without assigned_email in case column hasn't been added yet
       ({error}=await sb.from("invite_codes").insert({code,assigned_to:email,used:false}));
     }
     if(error){
@@ -3398,17 +3401,45 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent=`Error saving code: ${error.message}`;}
       return;
     }
-    btnLoad("save-ic",false,"✓ Saved!","Generate & Save Code");
-    if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent=`Code ${code} created for ${email}. Copy the message above and share it.`;}
-    setTimeout(()=>renderAdmin(null,null,"invite-codes"),1500);
+    // Auto-send invite email to the client
+    btnLoad("save-ic",true,"Sending invite…");
+    try{
+      await emailjs.send(EJS_SERVICE,"template_ajgunbg",{
+        to_email:email,
+        to_name:email,
+        notification_type:"🔑 Your CloseFlow TC Portal Is Ready",
+        details:`Your coordinator has set up your client portal. Register at portal.closeflowtc.com using your email address and this invite code:\n\n${code}\n\nThis code is tied to your email address — only you can use it. If you have any questions, reply to this email or call us at (330) 583-4443.`,
+        property_address:"",
+        portal_link:"https://portal.closeflowtc.com",
+        timestamp:new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",hour12:true}),
+      });
+      btnLoad("save-ic",false,"✓ Saved & Sent!","Generate & Save Code");
+      if(msg){
+        msg.style.display="block";
+        msg.style.background="#F0FFF4";
+        msg.style.color="#276749";
+        msg.textContent=`✅ Code ${code} saved and invite email sent to ${email}.`;
+      }
+    }catch(emailErr){
+      // Code was saved — email failed. Show partial success and let them copy manually.
+      console.error("Invite email failed:",emailErr);
+      btnLoad("save-ic",false,"✓ Saved","Generate & Save Code");
+      if(msg){
+        msg.style.display="block";
+        msg.style.background="#FFFDE7";
+        msg.style.color="var(--yellow)";
+        msg.textContent=`Code ${code} saved, but the invite email failed to send. Copy the message above and send it manually to ${email}.`;
+      }
+    }
+    setTimeout(()=>renderAdmin(null,null,"invite-codes"),2500);
   });
   qsa(".copy-ic-btn").forEach(btn=>{
     btn.addEventListener("click",()=>{
       const code=btn.dataset.code;
       const email=btn.dataset.email;
       const text=email
-        ?`Your CloseFlow TC invite code is: ${code}\n\nRegister at portal.closeflowtc.com using your email (${email}) and this code.`
-        :code;
+        ?`Hi — your CloseFlow TC portal is ready.\n\nRegister at portal.closeflowtc.com using your email address (${email}) and this invite code:\n\n${code}\n\nIf you have any questions, reply to this email or call us at (330) 583-4443.\n\nThe CloseFlow TC Team`
+        :`Hi — your CloseFlow TC portal is ready.\n\nRegister at portal.closeflowtc.com using your email address and this invite code:\n\n${code}\n\nIf you have any questions, call us at (330) 583-4443.\n\nThe CloseFlow TC Team`;
       navigator.clipboard.writeText(text);
       const orig=btn.textContent;
       btn.textContent="✓ Copied!";
