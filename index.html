@@ -584,7 +584,7 @@ function avatarElWithDropdown(name,photo,size=38,isAdmin=false){
   const fs=Math.round(size*.36);
   const avatarHtml=photo?`<img src="${photo}" alt="${name}"/>`:initials(name);
   const dropdownId=isAdmin?"admin-user-dropdown":"user-dropdown";
-  const settingsClick=isAdmin?"renderAdmin(null,null,'settings')":"renderClient(SESSION.client.id,ACTIVE_FILE_ID,'settings')";
+  const settingsClick=isAdmin?"renderAdmin(null,null,'settings')":"renderClient(SESSION.client.id,ACTIVE_FILE_ID,'account')";
   return`<div class="user-avatar-wrapper">
     <div class="avatar" style="width:${size}px;height:${size}px;font-size:${fs}px" onclick="document.getElementById('${dropdownId}').classList.toggle('active');event.stopPropagation()">${avatarHtml}</div>
     <div id="${dropdownId}" class="user-dropdown">
