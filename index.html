@@ -3622,25 +3622,43 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <button id="cancel-delete" class="btn btn-ghost">Cancel</button>
         <button id="confirm-delete" class="btn btn-danger" style="background:var(--danger);color:#fff">Yes, Delete</button>
       </div>
+      <p class="delete-error" style="display:none;margin-top:12px;font-size:12px;color:var(--danger);text-align:center;padding:8px;background:#FFF5F5;border-radius:8px"></p>
     </div>`;
     document.body.appendChild(overlay);
     overlay.querySelector("#cancel-delete").addEventListener("click",()=>overlay.remove());
     overlay.querySelector("#confirm-delete").addEventListener("click",async()=>{
-      // Hard delete — remove all related data first, then client
-      const{data:clientFiles}=await sb.from("files").select("id").eq("client_id",cid);
-      const fileIds=(clientFiles||[]).map(f=>f.id);
-      if(fileIds.length){
-        await sb.from("tasks").delete().in("file_id",fileIds);
-        await sb.from("key_dates").delete().in("file_id",fileIds);
-        await sb.from("contacts").delete().in("file_id",fileIds);
-        await sb.from("documents").delete().in("file_id",fileIds);
+      const btn=overlay.querySelector("#confirm-delete");
+      btn.textContent="Deleting…";btn.disabled=true;
+      try{
+        // Get all file IDs for this client first
+        const{data:clientFiles}=await sb.from("files").select("id").eq("client_id",cid);
+        const fileIds=(clientFiles||[]).map(f=>f.id);
+        // Delete all file-level related data
+        if(fileIds.length){
+          await sb.from("tasks").delete().in("file_id",fileIds);
+          await sb.from("key_dates").delete().in("file_id",fileIds);
+          await sb.from("contacts").delete().in("file_id",fileIds);
+          await sb.from("documents").delete().in("file_id",fileIds);
+          await sb.from("activity_log").delete().in("file_id",fileIds);
+          await sb.from("internal_notes").delete().in("file_id",fileIds);
+          await sb.from("client_requests").delete().in("file_id",fileIds);
+        }
+        // Delete all client-level related data
+        await sb.from("files").delete().eq("client_id",cid);
+        await sb.from("messages").delete().eq("client_id",cid);
+        await sb.from("notifications").delete().eq("client_id",cid);
+        await sb.from("feedback").delete().eq("client_id",cid);
+        // Finally delete the client record
+        const{error}=await sb.from("clients").delete().eq("id",cid);
+        if(error)throw error;
+        overlay.remove();
+        await renderAdmin(null,null,"overview");
+      }catch(err){
+        console.error("Delete failed:",err);
+        btn.textContent="Yes, Delete";btn.disabled=false;
+        const errEl=overlay.querySelector(".delete-error");
+        if(errEl){errEl.textContent=`Delete failed: ${err.message}. Check Supabase RLS policies.`;errEl.style.display="block";}
       }
-      await sb.from("files").delete().eq("client_id",cid);
-      await sb.from("messages").delete().eq("client_id",cid);
-      await sb.from("notifications").delete().eq("client_id",cid);
-      await sb.from("clients").delete().eq("id",cid);
-      overlay.remove();
-      await renderAdmin(null,null,"overview");
     });
   }
   if(tab==="overview"){
