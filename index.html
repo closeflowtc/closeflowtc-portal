@@ -2497,7 +2497,6 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   const isSuperAdmin=currentAdmin?.role==="superadmin";
   const allClients=clients||[];
   _allClients=allClients; // sync to global for modal access
-  _allFiles=allFiles||[];  // sync to global for modal access
 
   // Determine active client
   const isGlobalView=["overview","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"].includes(tab);
@@ -2520,6 +2519,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       sb.from("client_requests").select("*,clients(name),files(address)").order("created_at",{ascending:false}),
     ]);
     allFiles=allFiles||[];allTasks2=allTasks2||[];allDates2=allDates2||[];allRequests=allRequests||[];
+    _allFiles=allFiles; // sync to global for modal access
   }
 
   let client=null,file=null,docs=null,msgs=null,tasks=null,dates=null,contacts=null,internalNotes=null,activityLog=null,clientRequests=null;
