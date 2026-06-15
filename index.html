@@ -190,10 +190,15 @@ input,select,textarea{font-family:inherit}
   /* Cards */
   .card-pad{padding:14px 16px}
   /* Admin layout */
-  .admin-topbar{padding:10px 14px!important;flex-wrap:wrap;gap:8px}
-  /* Hide admin sidebar on mobile — show as top nav */
-  .admin-sidebar{width:100%!important;height:auto!important;position:relative!important;flex-direction:row!important;flex-wrap:wrap!important;padding:10px!important;overflow-x:auto}
+  .admin-topbar{padding:10px 14px!important;flex-wrap:wrap;gap:8px;height:auto!important;position:relative!important}
+  /* Admin shell: content full width; sidebar becomes a slide-in drawer */
+  .admin-wrap{flex-direction:column!important}
+  .admin-hamburger{display:flex!important}
+  .admin-sidebar{position:fixed!important;top:0;left:0;width:82%!important;max-width:300px!important;height:100vh!important;z-index:1200;transform:translateX(-105%);transition:transform .28s ease;box-shadow:4px 0 24px rgba(0,0,0,.3)}
+  .admin-sidebar.mobile-open{transform:translateX(0)}
   .admin-main-wrap{margin-left:0!important}
+  .admin-main{padding:16px 14px!important}
+  #admin-sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1100;display:none}
   /* Stat cards */
   .stat-grid{grid-template-columns:1fr 1fr!important}
   /* Tables */
@@ -449,6 +454,21 @@ function calNav(d){CAL_OFFSET+=d;renderAdmin(null,null,"calendar");}
 function calToday(){CAL_OFFSET=0;renderAdmin(null,null,"calendar");}
 function setDealsFilter(v){DEALS_STAGE_FILTER=v;renderAdmin(null,null,"deals");}
 function openDealsFiltered(v){DEALS_STAGE_FILTER=v;renderAdmin(null,null,"deals");}
+function toggleAdminSidebar(){
+  const sb2=document.querySelector(".admin-sidebar");
+  if(!sb2)return;
+  const open=sb2.classList.toggle("mobile-open");
+  let ov=document.getElementById("admin-sidebar-overlay");
+  if(open){
+    if(!ov){
+      ov=document.createElement("div");
+      ov.id="admin-sidebar-overlay";
+      ov.onclick=toggleAdminSidebar;
+      document.body.appendChild(ov);
+    }
+    ov.style.display="block";
+  }else if(ov){ov.style.display="none";}
+}
 let _notifPoll=null;
 let _allClients=[],_allFiles=[];
 
@@ -2712,6 +2732,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
 // ── ADMIN PANEL ───────────────────────────────────────────────────────────────
 async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
+  document.getElementById("admin-sidebar-overlay")?.remove();
   const[{data:clients},{data:admins}]=await Promise.all([
     sb.from("clients").select("*").is("deleted_at",null).order("created_at"),
     sb.from("admins").select("*").order("created_at"),
@@ -3948,8 +3969,9 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       </div>
     </div>
     <!-- RIGHT COLUMN: topbar stacked above main content -->
-    <div style="margin-left:240px;flex:1;display:flex;flex-direction:column;min-height:100vh">
+    <div class="admin-main-wrap" style="margin-left:240px;flex:1;display:flex;flex-direction:column;min-height:100vh">
       <div class="admin-topbar" style="background:var(--sidebar-active);border-bottom:1px solid rgba(255,255,255,.08)">
+        <button class="admin-hamburger" onclick="toggleAdminSidebar()" aria-label="Menu" style="display:none;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;width:40px;height:40px;border-radius:10px;font-size:20px;cursor:pointer;flex-shrink:0;align-items:center;justify-content:center">☰</button>
         <div style="display:flex;align-items:center;gap:14px">
           <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 14px;min-width:220px">
             <span style="color:rgba(255,255,255,.4);font-size:13px">🔍</span>
