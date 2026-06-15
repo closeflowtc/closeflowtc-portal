@@ -403,7 +403,12 @@ const TOUR_STEPS=[
   },
 ];
 let SESSION=null,TOUR_ACTIVE=false,TOUR_STEP=0,TOUR_CLIENT_ID=null,ACTIVE_FILE_ID=null;
+let CAL_OFFSET=0,DEALS_STAGE_FILTER="active";
+function calNav(d){CAL_OFFSET+=d;renderAdmin(null,null,"calendar");}
+function calToday(){CAL_OFFSET=0;renderAdmin(null,null,"calendar");}
+function setDealsFilter(v){DEALS_STAGE_FILTER=v;renderAdmin(null,null,"deals");}
 let _notifPoll=null;
+let _allClients=[],_allFiles=[];
 
 // Start polling for new notifications every 30 seconds
 function startNotifPolling(clientId){
@@ -481,7 +486,7 @@ function renderTourOverlay(step,total,renderFn){
   // Dim backdrop
   const backdrop=document.createElement("div");
   backdrop.id="tour-overlay";
-  backdrop.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);z-index:2000;pointer-events:none";
+  backdrop.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;pointer-events:none";
 
   // Spotlight the highlighted nav button
   const navBtns=document.querySelectorAll(".client-nav-btn");
@@ -494,7 +499,10 @@ function renderTourOverlay(step,total,renderFn){
     backdrop.appendChild(hl);
     // Position tooltip to the RIGHT of the sidebar so it doesn't cover content
     const sidebarWidth=240;
-    tooltipTop=`${Math.max(20,Math.min(r.top,window.innerHeight-480))}px`;
+    const tooltipHeight=460; // approximate
+    const rawTop=Math.max(20,r.top);
+    const clampedTop=Math.min(rawTop, window.innerHeight - tooltipHeight - 20);
+    tooltipTop=`${clampedTop}px`;
     tooltipLeft=`${sidebarWidth+24}px`;
     tooltipTransform="none";
   }
@@ -582,11 +590,13 @@ function daysUntil(d){if(!d)return null;return Math.ceil((new Date(d)-new Date()
 // Avatar with dropdown menu
 function avatarElWithDropdown(name,photo,size=38,isAdmin=false){
   const fs=Math.round(size*.36);
-  const avatarHtml=photo?`<img src="${photo}" alt="${name}"/>`:initials(name);
+  const isEmoji=photo&&String(photo).startsWith("emoji:");
+  const avatarHtml=isEmoji?photo.slice(6):(photo?`<img src="${photo}" alt="${name}"/>`:initials(name));
+  const avatarStyle=isEmoji?`width:${size}px;height:${size}px;font-size:${Math.round(size*.52)}px;background:var(--teal-mist)`:`width:${size}px;height:${size}px;font-size:${fs}px`;
   const dropdownId=isAdmin?"admin-user-dropdown":"user-dropdown";
-  const settingsClick=isAdmin?"renderAdmin(null,null,'settings')":"renderClient(SESSION.client.id,ACTIVE_FILE_ID,'account')";
+  const settingsClick=isAdmin?"showAdminProfileModal()":"renderClient(SESSION.client.id,ACTIVE_FILE_ID,'account')";
   return`<div class="user-avatar-wrapper">
-    <div class="avatar" style="width:${size}px;height:${size}px;font-size:${fs}px" onclick="document.getElementById('${dropdownId}').classList.toggle('active');event.stopPropagation()">${avatarHtml}</div>
+    <div class="avatar" id="${isAdmin?"header-admin-avatar":"header-user-avatar"}" style="${avatarStyle}" onclick="document.getElementById('${dropdownId}').classList.toggle('active');event.stopPropagation()">${avatarHtml}</div>
     <div id="${dropdownId}" class="user-dropdown">
       <button class="user-dropdown-item" onclick="${settingsClick}"><span>⚙️</span>Profile Settings</button>
       <button class="user-dropdown-item danger" onclick="confirmSignOut()"><span>🚪</span>Sign Out</button>
@@ -594,7 +604,416 @@ function avatarElWithDropdown(name,photo,size=38,isAdmin=false){
   </div>`;
 }
 
+// ── ADMIN PROFILE MODAL ───────────────────────────────────────────────────────
+function showAdminProfileModal(){
+  const a=SESSION?.admin;if(!a)return;
+  document.querySelectorAll(".user-dropdown").forEach(d=>d.classList.remove("active"));
+  const existing=document.getElementById("admin-profile-overlay");if(existing)existing.remove();
+  const EMOJIS=["😀","😎","🤠","🦊","🐢","🌵","🏜️","🏡","⭐","💼","📋","✨"];
+  const isEmoji=a.photo_url&&String(a.photo_url).startsWith("emoji:");
+  const overlay=document.createElement("div");
+  overlay.id="admin-profile-overlay";
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px;overflow-y:auto";
+  overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:32px;max-width:460px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease;max-height:90vh;overflow-y:auto">
+    <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:4px">👤 My Profile</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:20px">Update how your name and avatar appear across the portal.</p>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
+      <div id="ap-avatar-preview">${avatarEl(a.name,a.photo_url||"",64)}</div>
+      <div style="flex:1">
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer;display:inline-flex;margin-bottom:6px">📷 Upload Photo<input type="file" id="ap-photo-file" accept="image/*" style="display:none"/></label>
+        ${a.photo_url?`<button class="btn btn-ghost btn-sm" id="ap-remove-avatar" style="color:var(--danger);font-size:11px;display:inline-flex;margin-left:6px">Remove</button>`:""}
+        <p style="font-size:11px;color:var(--muted)">…or pick an emoji:</p>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">
+          ${EMOJIS.map(e=>`<button class="ap-emoji-btn" data-emoji="${e}" style="font-size:18px;background:${isEmoji&&a.photo_url==="emoji:"+e?"var(--teal-mist)":"none"};border:1px solid ${isEmoji&&a.photo_url==="emoji:"+e?"var(--teal)":"var(--border)"};border-radius:8px;padding:4px 7px;cursor:pointer">${e}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="input-group"><label class="input-label">Display Name</label><input class="finput" id="ap-name" value="${(a.name||"").replace(/"/g,"&quot;")}"/></div>
+      <div class="input-group"><label class="input-label">Phone</label><input class="finput" id="ap-phone" value="${(a.phone||"").replace(/"/g,"&quot;")}" placeholder="(555) 000-0000"/></div>
+    </div>
+    <div class="input-group"><label class="input-label">Email</label><input class="finput" id="ap-email" type="email" value="${(a.email||"").replace(/"/g,"&quot;")}"/><p style="font-size:10px;color:var(--muted);margin-top:4px">⚠️ This is also your sign-in email — change it carefully.</p></div>
+    <div id="ap-msg" style="display:none;margin-top:4px;margin-bottom:8px;padding:10px 14px;border-radius:10px;font-size:13px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-ghost" id="ap-cancel">Cancel</button>
+      <button class="btn btn-primary" id="ap-save">Save Profile</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click",e=>{if(e.target===overlay)overlay.remove();});
+  let pendingPhoto=a.photo_url||"";
+  const refreshPreview=()=>{const p=overlay.querySelector("#ap-avatar-preview");if(p)p.innerHTML=avatarEl(overlay.querySelector("#ap-name")?.value||a.name,pendingPhoto,64);};
+  overlay.querySelector("#ap-photo-file").addEventListener("change",e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{pendingPhoto=ev.target.result;refreshPreview();};
+    reader.readAsDataURL(file);
+  });
+  overlay.querySelectorAll(".ap-emoji-btn").forEach(btn=>btn.addEventListener("click",()=>{
+    pendingPhoto="emoji:"+btn.dataset.emoji;
+    overlay.querySelectorAll(".ap-emoji-btn").forEach(b=>{b.style.background="none";b.style.borderColor="var(--border)";});
+    btn.style.background="var(--teal-mist)";btn.style.borderColor="var(--teal)";
+    refreshPreview();
+  }));
+  const removeBtn=overlay.querySelector("#ap-remove-avatar");
+  if(removeBtn)removeBtn.addEventListener("click",()=>{pendingPhoto="";refreshPreview();});
+  overlay.querySelector("#ap-cancel").addEventListener("click",()=>overlay.remove());
+  overlay.querySelector("#ap-save").addEventListener("click",async()=>{
+    const name=overlay.querySelector("#ap-name")?.value.trim();
+    const phone=overlay.querySelector("#ap-phone")?.value.trim()||"";
+    const email=overlay.querySelector("#ap-email")?.value.trim();
+    const msg=overlay.querySelector("#ap-msg");
+    if(!name||!email){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Name and email are required.";}return;}
+    btnLoad("ap-save",true,"Saving…");
+    if(email!==a.email){
+      const{data:emailTaken}=await sb.from("admins").select("id").eq("email",email).neq("id",a.id).maybeSingle();
+      if(emailTaken){btnLoad("ap-save",false);if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="That email is already used by another team member.";}return;}
+    }
+    const{data:updated,error}=await sb.from("admins").update({name,phone,email,photo_url:pendingPhoto}).eq("id",a.id).select().single();
+    if(error||!updated){btnLoad("ap-save",false);if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent=`Couldn't save: ${error?.message||"unknown error"}. If this mentions a missing column, run the profile SQL in Supabase.`;}return;}
+    SESSION.admin=updated;
+    saveSession();
+    // Update header avatar in place
+    const headerAv=document.getElementById("header-admin-avatar");
+    if(headerAv){
+      const isEm=updated.photo_url&&String(updated.photo_url).startsWith("emoji:");
+      headerAv.innerHTML=isEm?updated.photo_url.slice(6):(updated.photo_url?`<img src="${updated.photo_url}" alt="${updated.name}"/>`:initials(updated.name));
+      headerAv.style.fontSize=isEm?"18px":"12px";
+      headerAv.style.background=isEm?"var(--teal-mist)":"";
+    }
+    btnLoad("ap-save",false,"✓ Saved!");
+    setTimeout(()=>overlay.remove(),900);
+  });
+}
+
 // Sign out confirmation modal
+// ── FORGOT / RESET PASSWORD ──────────────────────────────────────────
+function generateToken(){return Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)+Date.now().toString(36);}
+
+function showForgotPasswordModal(prefillEmail=""){
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
+  overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:32px;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease">
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="width:52px;height:52px;border-radius:14px;background:var(--teal-mist);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px">🔑</div>
+      <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:6px">Forgot your password?</h3>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6">Enter your email and we'll send you a link to reset your password.</p>
+    </div>
+    <div class="input-group"><label class="input-label">Email address</label><input class="finput" id="reset-email" type="email" placeholder="your@email.com" value="${prefillEmail}"/></div>
+    <div id="reset-req-status" style="display:none;margin-top:10px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600"></div>
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:20px">
+      <button id="cancel-reset-req" class="btn btn-ghost">Cancel</button>
+      <button id="send-reset-link" class="btn btn-primary">Send Reset Link</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#cancel-reset-req").addEventListener("click",()=>overlay.remove());
+  overlay.querySelector("#send-reset-link").addEventListener("click",async()=>{
+    const email=overlay.querySelector("#reset-email")?.value.trim().toLowerCase();
+    const statusEl=overlay.querySelector("#reset-req-status");
+    if(!email||!email.includes("@")){
+      statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";
+      statusEl.textContent="Please enter a valid email address.";return;
+    }
+    const btn=overlay.querySelector("#send-reset-link");
+    btn.textContent="Sending…";btn.disabled=true;
+    // Check clients table first, then admins
+    let userType=null;
+    const{data:clientMatch}=await sb.from("clients").select("id,name").eq("email",email).maybeSingle();
+    if(clientMatch)userType="client";
+    if(!userType){
+      const{data:adminMatch}=await sb.from("admins").select("id,name").eq("email",email).maybeSingle();
+      if(adminMatch)userType="admin";
+    }
+    // Always show success (security best practice — don't reveal if email exists)
+    const token=generateToken();
+    if(userType){
+      // Delete any existing unused tokens for this email
+      await sb.from("password_resets").delete().eq("email",email).eq("used",false);
+      // Insert new token
+      const expiresAt=new Date(Date.now()+3600000).toISOString(); // 1 hour
+      await sb.from("password_resets").insert({email,token,user_type:userType,used:false,expires_at:expiresAt});
+      // Send reset email
+      const resetLink=`${window.location.origin}${window.location.pathname}?reset=${token}`;
+      try{
+        await emailjs.send(EJS_SERVICE,"template_ajgunbg",{
+          to_email:email,
+          to_name:email,
+          notification_type:"🔑 Password Reset Request",
+          details:`We received a request to reset your CloseFlow TC portal password.\n\nClick the link below to set a new password. This link expires in 1 hour.\n\n${resetLink}\n\nIf you didn't request this, you can safely ignore this email.`,
+          property_address:"",
+          portal_link:resetLink,
+          timestamp:new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",hour12:true}),
+        });
+      }catch(e){console.error("Reset email failed:",e);}
+    }
+    statusEl.style.display="block";statusEl.style.background="#F0FFF4";statusEl.style.color="#276749";
+    statusEl.textContent="✅ If that email is in our system, a reset link is on its way. Check your inbox.";
+    btn.textContent="Sent!";btn.style.background="var(--success)";
+    setTimeout(()=>overlay.remove(),4000);
+  });
+}
+
+async function showResetPasswordForm(token){
+  // Validate token
+  const{data:resetRecord}=await sb.from("password_resets").select("*").eq("token",token).eq("used",false).maybeSingle();
+  const isExpired=resetRecord&&new Date(resetRecord.expires_at)<new Date();
+  show(`<div style="display:flex;min-height:100vh;align-items:center;justify-content:center;background:linear-gradient(135deg,#1C2B32,#3A9DB5);padding:20px">
+    <div style="background:var(--white);border-radius:24px;padding:40px;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.3)">
+      <div style="text-align:center;margin-bottom:28px">
+        <div style="width:56px;height:56px;border-radius:16px;background:var(--teal-mist);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px">🔑</div>
+        <h2 style="font-size:22px;font-weight:900;color:var(--ink);margin-bottom:8px">${!resetRecord?"Invalid Link":isExpired?"Link Expired":"Set New Password"}</h2>
+        <p style="font-size:13px;color:var(--muted)">${!resetRecord?"This reset link is invalid or has already been used.":isExpired?"This link has expired. Request a new one from the login page.":"Enter your new password below."}</p>
+      </div>
+      ${resetRecord&&!isExpired?`
+        <div class="input-group"><label class="input-label">New Password</label><input class="finput" id="new-pw-1" type="password" placeholder="Enter new password"/></div>
+        <div class="input-group"><label class="input-label">Confirm New Password</label><input class="finput" id="new-pw-2" type="password" placeholder="Repeat new password"/></div>
+        <div id="reset-pw-status" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600"></div>
+        <button class="btn btn-primary" id="do-pw-reset" style="width:100%;padding:13px;font-size:15px;border-radius:12px;justify-content:center">Set New Password</button>
+      `:`<button class="btn btn-primary" id="back-to-login" style="width:100%;padding:13px;font-size:15px;border-radius:12px;justify-content:center">Back to Login</button>`}
+    </div>
+  </div>`);
+  on("#back-to-login","click",()=>{
+    window.history.replaceState({},"",window.location.pathname);
+    renderLogin();
+  });
+  on("#do-pw-reset","click",async()=>{
+    const pw1=qs("#new-pw-1")?.value;
+    const pw2=qs("#new-pw-2")?.value;
+    const statusEl=qs("#reset-pw-status");
+    if(!pw1||pw1.length<6){statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";statusEl.textContent="Password must be at least 6 characters.";return;}
+    if(pw1!==pw2){statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";statusEl.textContent="Passwords don't match.";return;}
+    btnLoad("do-pw-reset",true,"Saving…");
+    // Update password in the correct table
+    if(resetRecord.user_type==="client"){
+      await sb.from("clients").update({password:pw1}).eq("email",resetRecord.email);
+    }else{
+      await sb.from("admins").update({password:pw1}).eq("email",resetRecord.email);
+    }
+    // Mark token as used
+    await sb.from("password_resets").update({used:true}).eq("token",token);
+    // Clear the URL param
+    window.history.replaceState({},"",window.location.pathname);
+    statusEl.style.display="block";statusEl.style.background="#F0FFF4";statusEl.style.color="#276749";
+    statusEl.textContent="✅ Password updated! Redirecting you to login...";
+    setTimeout(()=>renderLogin(),2000);
+  });
+}
+
+// ── GLOBAL ADD TASK MODAL ───────────────────────────────────────────
+function showGlobalAddTaskModal(){
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
+  overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:32px;max-width:480px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease">
+    <div style="margin-bottom:20px">
+      <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:6px">✅ Add New Task</h3>
+      <p style="font-size:13px;color:var(--muted)">Assign a task to a specific client and deal.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Client <span style="color:var(--danger)">*</span></label>
+        <select id="gtask-client" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;background:#fff">
+          <option value="">Select a client...</option>
+          ${_allClients.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Deal / Property <span style="color:var(--danger)">*</span></label>
+        <select id="gtask-file" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;background:#fff">
+          <option value="">Select a client first...</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Task Description <span style="color:var(--danger)">*</span></label>
+        <input id="gtask-text" type="text" placeholder="e.g. Upload signed purchase agreement" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px"/>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="gtask-upload" style="width:16px;height:16px;accent-color:var(--teal)"/>
+        <label for="gtask-upload" style="font-size:13px;color:var(--ink);cursor:pointer">Requires document upload</label>
+      </div>
+    </div>
+    <div id="gtask-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button id="cancel-gtask" class="btn btn-ghost">Cancel</button>
+      <button id="save-gtask" class="btn btn-primary">Add Task</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  // Load files when client changes
+  overlay.querySelector("#gtask-client").addEventListener("change",async e=>{
+    const cid=e.target.value;
+    const sel=overlay.querySelector("#gtask-file");
+    if(!cid){sel.innerHTML=`<option value="">Select a client first...</option>`;return;}
+    const{data:files}=await sb.from("files").select("id,address").eq("client_id",cid).order("created_at");
+    sel.innerHTML=`<option value="">Select a deal...</option>`+(files||[]).map(f=>`<option value="${f.id}">${f.address||"Address pending"}</option>`).join("");
+  });
+  overlay.querySelector("#cancel-gtask").addEventListener("click",()=>overlay.remove());
+  overlay.querySelector("#save-gtask").addEventListener("click",async()=>{
+    const clientId=overlay.querySelector("#gtask-client")?.value;
+    const fileId=overlay.querySelector("#gtask-file")?.value;
+    const text=overlay.querySelector("#gtask-text")?.value.trim();
+    const requiresUpload=overlay.querySelector("#gtask-upload")?.checked||false;
+    const statusEl=overlay.querySelector("#gtask-status");
+    if(!clientId||!fileId||!text){
+      statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";
+      statusEl.textContent="Please fill in all required fields.";return;
+    }
+    const btn=overlay.querySelector("#save-gtask");
+    btn.textContent="Saving…";btn.disabled=true;
+    await sb.from("tasks").insert({client_id:clientId,file_id:fileId,text,status:"pending",done:false,requires_upload:requiresUpload});
+    const client=_allClients.find(c=>c.id===clientId);
+    if(client)await createNotification(clientId,fileId,`New task assigned: "${text}"${requiresUpload?" — This task requires a document upload.":""}`,"info");
+    await sb.from("activity_log").insert({file_id:fileId,admin_name:SESSION?.admin?.name||"Admin",action:"added a task",details:text.slice(0,80)});
+    overlay.remove();
+    renderAdmin(null,null,"tasks-all");
+  });
+}
+
+// ── GLOBAL UPLOAD DOCUMENT MODAL ─────────────────────────────────────
+function showGlobalUploadDocModal(){
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
+  overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:32px;max-width:500px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease">
+    <div style="margin-bottom:20px">
+      <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:6px">📄 Upload Document</h3>
+      <p style="font-size:13px;color:var(--muted)">Upload a file directly or paste a Google Drive link.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Client <span style="color:var(--danger)">*</span></label>
+        <select id="gdoc-client" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;background:#fff">
+          <option value="">Select a client...</option>
+          ${_allClients.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Deal / Property <span style="color:var(--danger)">*</span></label>
+        <select id="gdoc-file" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;background:#fff">
+          <option value="">Select a client first...</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Document Name <span style="color:var(--danger)">*</span></label>
+        <input id="gdoc-name" type="text" placeholder="e.g. Purchase Agreement - Signed" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px"/>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Upload Method</label>
+        <div style="display:flex;border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px">
+          <button id="upload-tab-file" class="btn" style="flex:1;border-radius:0;border:none;background:var(--teal);color:#fff;font-size:12px;font-weight:700">📁 From Computer</button>
+          <button id="upload-tab-link" class="btn" style="flex:1;border-radius:0;border:none;background:var(--white);color:var(--muted);font-size:12px;font-weight:700">🔗 Drive Link</button>
+        </div>
+        <div id="gdoc-file-upload-area">
+          <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;border:2px dashed var(--border);border-radius:12px;cursor:pointer;background:var(--main-bg);transition:all .2s" onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--border)'">
+            <span style="font-size:28px">☁️</span>
+            <span style="font-size:13px;font-weight:600;color:var(--ink)">Click to choose a file</span>
+            <span style="font-size:11px;color:var(--muted)">PDF, Word, Excel, JPG, PNG — up to 20MB</span>
+            <input id="gdoc-file-input" type="file" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.txt"/>
+          </label>
+          <p id="gdoc-file-chosen" style="font-size:12px;color:var(--teal);margin-top:6px;display:none"></p>
+        </div>
+        <div id="gdoc-link-area" style="display:none">
+          <input id="gdoc-drive-link" type="url" placeholder="https://drive.google.com/file/..." style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px"/>
+          <p style="font-size:11px;color:var(--muted);margin-top:6px">Make sure sharing is set to "Anyone with the link can view."</p>
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Category</label>
+        <select id="gdoc-category" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;background:#fff">
+          <option>General</option><option>Contract</option><option>Title</option><option>Closing</option><option>Wire Instructions</option><option>Disclosure</option><option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div id="gdoc-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button id="cancel-gdoc" class="btn btn-ghost">Cancel</button>
+      <button id="save-gdoc" class="btn btn-primary">Upload Document</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  // Tab switching
+  let uploadMode="file";
+  overlay.querySelector("#upload-tab-file").addEventListener("click",()=>{
+    uploadMode="file";
+    overlay.querySelector("#gdoc-file-upload-area").style.display="block";
+    overlay.querySelector("#gdoc-link-area").style.display="none";
+    overlay.querySelector("#upload-tab-file").style.background="var(--teal)";overlay.querySelector("#upload-tab-file").style.color="#fff";
+    overlay.querySelector("#upload-tab-link").style.background="var(--white)";overlay.querySelector("#upload-tab-link").style.color="var(--muted)";
+  });
+  overlay.querySelector("#upload-tab-link").addEventListener("click",()=>{
+    uploadMode="link";
+    overlay.querySelector("#gdoc-file-upload-area").style.display="none";
+    overlay.querySelector("#gdoc-link-area").style.display="block";
+    overlay.querySelector("#upload-tab-link").style.background="var(--teal)";overlay.querySelector("#upload-tab-link").style.color="#fff";
+    overlay.querySelector("#upload-tab-file").style.background="var(--white)";overlay.querySelector("#upload-tab-file").style.color="var(--muted)";
+  });
+
+  // File chosen label
+  overlay.querySelector("#gdoc-file-input").addEventListener("change",e=>{
+    const f=e.target.files[0];
+    const label=overlay.querySelector("#gdoc-file-chosen");
+    if(f){label.style.display="block";label.textContent=`✓ ${f.name} (${(f.size/1024/1024).toFixed(1)}MB)`;}
+  });
+
+  // Load files when client changes
+  overlay.querySelector("#gdoc-client").addEventListener("change",async e=>{
+    const cid=e.target.value;
+    const sel=overlay.querySelector("#gdoc-file");
+    if(!cid){sel.innerHTML=`<option value="">Select a client first...</option>`;return;}
+    const{data:files}=await sb.from("files").select("id,address").eq("client_id",cid).order("created_at");
+    sel.innerHTML=`<option value="">Select a deal...</option>`+(files||[]).map(f=>`<option value="${f.id}">${f.address||"Address pending"}</option>`).join("");
+  });
+
+  overlay.querySelector("#cancel-gdoc").addEventListener("click",()=>overlay.remove());
+  overlay.querySelector("#save-gdoc").addEventListener("click",async()=>{
+    const clientId=overlay.querySelector("#gdoc-client")?.value;
+    const fileId=overlay.querySelector("#gdoc-file")?.value;
+    const name=overlay.querySelector("#gdoc-name")?.value.trim();
+    const category=overlay.querySelector("#gdoc-category")?.value||"General";
+    const statusEl=overlay.querySelector("#gdoc-status");
+    if(!clientId||!fileId||!name){
+      statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";
+      statusEl.textContent="Please fill in all required fields.";return;
+    }
+    const btn=overlay.querySelector("#save-gdoc");
+    btn.textContent="Uploading…";btn.disabled=true;
+    let docUrl="";
+    if(uploadMode==="file"){
+      const fileInput=overlay.querySelector("#gdoc-file-input");
+      const file=fileInput?.files[0];
+      if(!file){
+        statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";
+        statusEl.textContent="Please select a file to upload.";btn.textContent="Upload Document";btn.disabled=false;return;
+      }
+      if(file.size>20*1024*1024){
+        statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";
+        statusEl.textContent="File is too large. Maximum size is 20MB.";btn.textContent="Upload Document";btn.disabled=false;return;
+      }
+      const ext=file.name.split(".").pop();
+      const path=`documents/${clientId}/${fileId}/${Date.now()}.${ext}`;
+      const{data:uploadData,error:uploadErr}=await sb.storage.from("portal-docs").upload(path,file,{cacheControl:"3600",upsert:false});
+      if(uploadErr){
+        statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";
+        statusEl.textContent=`Upload failed: ${uploadErr.message}`;btn.textContent="Upload Document";btn.disabled=false;return;
+      }
+      const{data:urlData}=sb.storage.from("portal-docs").getPublicUrl(path);
+      docUrl=urlData?.publicUrl||"";
+    }else{
+      docUrl=overlay.querySelector("#gdoc-drive-link")?.value.trim();
+      if(!docUrl){
+        statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";
+        statusEl.textContent="Please paste a Google Drive link.";btn.textContent="Upload Document";btn.disabled=false;return;
+      }
+    }
+    await sb.from("documents").insert({client_id:clientId,file_id:fileId,name,url:docUrl,category,uploaded_by:"admin"});
+    const client=_allClients.find(c=>c.id===clientId);
+    if(client)await createNotification(clientId,fileId,`New document available: "${name}"`, "info");
+    await sb.from("activity_log").insert({file_id:fileId,admin_name:SESSION?.admin?.name||"Admin",action:"uploaded a document",details:name.slice(0,80)});
+    overlay.remove();
+    renderAdmin(null,null,"documents-all");
+  });
+}
+
 function showReportModal(userName,userEmail){
   const overlay=document.createElement("div");
   overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
@@ -747,6 +1166,7 @@ function updateBulkToolbar(itemType){
     toolbar.innerHTML=`
       <span class="bulk-toolbar-count">${bulkSelected.size} selected</span>
       <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2)" onclick="clearBulkSelection()">Clear</button>
+      ${itemType==="deals"?`<button class="btn" style="background:var(--teal-mist);color:var(--teal-dark);border:1px solid var(--teal-light);font-weight:700" onclick="confirmBulkArchive()">📦 Archive Selected</button>`:""}
       <button class="btn btn-danger" onclick="confirmBulkDelete('${itemType}')">🗑 Delete Selected</button>
     `;
   }else if(toolbar){
@@ -757,6 +1177,34 @@ function clearBulkSelection(){
   bulkSelected.clear();
   document.querySelectorAll(".bulk-checkbox").forEach(cb=>cb.checked=false);
   updateBulkToolbar();
+}
+async function confirmBulkArchive(){
+  const count=bulkSelected.size;
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px";
+  overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:32px;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="width:56px;height:56px;border-radius:50%;background:var(--teal-mist);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px">📦</div>
+      <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:8px">Archive ${count} deal${count===1?"":"s"}?</h3>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6">Archived deals are hidden from the active list but nothing is deleted. You can view them anytime with the stage filter, and restore one by changing its stage inside the deal.</p>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="cancel-bulk-archive" class="btn btn-ghost">Cancel</button>
+      <button id="confirm-bulk-archive" class="btn btn-teal">Yes, Archive ${count}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#cancel-bulk-archive").addEventListener("click",()=>overlay.remove());
+  overlay.querySelector("#confirm-bulk-archive").addEventListener("click",async()=>{
+    const ids=Array.from(bulkSelected);
+    const{error}=await sb.from("files").update({deal_stage:"Archived",status:"Archived"}).in("id",ids);
+    overlay.remove();
+    bulkSelected.clear();
+    const toolbar=document.getElementById("bulk-toolbar");
+    if(toolbar)toolbar.remove();
+    if(error){alert(`Couldn't archive: ${error.message}`);return;}
+    renderAdmin(null,null,"deals");
+  });
 }
 async function confirmBulkDelete(itemType){
   const count=bulkSelected.size;
@@ -806,7 +1254,7 @@ async function confirmBulkDelete(itemType){
 }
 
 function fmtDate(d){if(!d)return"TBD";return new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}
-function avatarEl(name,photo,size=38){const fs=Math.round(size*.36);if(photo)return`<div class="avatar" style="width:${size}px;height:${size}px"><img src="${photo}" alt="${name}"/></div>`;return`<div class="avatar" style="width:${size}px;height:${size}px;font-size:${fs}px">${initials(name)}</div>`;}
+function avatarEl(name,photo,size=38){const fs=Math.round(size*.36);if(photo&&String(photo).startsWith("emoji:"))return`<div class="avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size*.52)}px;background:var(--teal-mist)">${photo.slice(6)}</div>`;if(photo)return`<div class="avatar" style="width:${size}px;height:${size}px"><img src="${photo}" alt="${name}"/></div>`;return`<div class="avatar" style="width:${size}px;height:${size}px;font-size:${fs}px">${initials(name)}</div>`;}
 function badgeEl(status){const c=STATUS[status]||{bg:"#EDF2F7",text:"#4A5568",dot:"#A0AEC0"};return`<span class="badge" style="background:${c.bg};color:${c.text}"><span class="badge-dot" style="background:${c.dot}"></span>${status}</span>`;}
 function roleBadge(role){const isSA=role==="superadmin";return`<span class="chip" style="background:${isSA?"#FEFCBF":"#EBF8FF"};color:${isSA?"#744210":"#2B6CB0"}">${isSA?"⭐ Super Admin":"👤 Admin"}</span>`;}
 function logoEl(light=false){const tc=light?"#fff":"#1C2B32";const sub=light?"rgba(255,255,255,.5)":"#718096";return`<div style="display:flex;align-items:center;gap:10px"><img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png" style="height:32px;width:auto" alt="CloseFlow TC"/><div><div style="font-size:13px;font-weight:800;color:${tc};letter-spacing:.05em;text-transform:uppercase;line-height:1.1">CloseFlow TC</div><div style="font-size:8px;color:${sub};letter-spacing:.12em;text-transform:uppercase;margin-top:1px">Where Every Closing Flows</div></div></div>`;}
@@ -1238,7 +1686,7 @@ function showWelcomeModal(clientName,clientId,onSkip,onTour){
 
 // ── TOUR ──────────────────────────────────────────────────────────────────────
 // ── AUTH ──────────────────────────────────────────────────────────────────────
-function renderLogin(mode="login",err="",preserveValues={},success=""){
+function renderLogin(mode="login",err="",preserveValues={}){
   show(`<div style="display:flex;min-height:100vh">
     <div class="auth-left">
       <div style="position:absolute;width:400px;height:400px;border-radius:50%;background:rgba(255,255,255,.04);top:-80px;right:-100px"></div>
@@ -1264,12 +1712,11 @@ function renderLogin(mode="login",err="",preserveValues={},success=""){
           <button class="auth-tab" id="tab-reg" style="background:${mode==="register"?"var(--sidebar-active)":"#fff"};color:${mode==="register"?"#fff":"var(--muted)"}">Register</button>
         </div>
         ${err?`<div style="color:var(--danger);font-size:12px;margin-bottom:14px;padding:10px 14px;background:#FFF5F5;border-radius:10px;border:1px solid #FED7D7">${err}</div>`:""}
-        ${success?`<div style="color:#276749;font-size:12px;margin-bottom:14px;padding:10px 14px;background:#F0FFF4;border-radius:10px;border:1px solid #C6F6D5">${success}</div>`:""}
         ${mode==="login"?`
           <div class="input-group"><label class="input-label">Email</label><input class="finput" id="f-email" type="email" placeholder="your@email.com" value="${preserveValues.email||""}"/></div>
           <div class="input-group"><label class="input-label">Password</label><input class="finput" id="f-pass" type="password" placeholder="••••••••"/></div>
-          <p style="font-size:12px;text-align:right;margin-top:-6px;margin-bottom:16px"><a href="#" id="forgot-pw-link" style="color:var(--muted);font-weight:600">Forgot password?</a></p>
           <button class="btn btn-primary" id="do-login" style="width:100%;padding:13px;font-size:15px;border-radius:12px;justify-content:center">Sign In →</button>
+          <p style="text-align:center;margin-top:12px"><button id="forgot-pw-btn" style="background:none;border:none;color:var(--teal);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline">Forgot your password?</button></p>
         `:`
           <div class="input-group"><label class="input-label">Full Name</label><input class="finput" id="f-name" placeholder="Jane Smith" value="${preserveValues.name||""}"/></div>
           <div class="input-group"><label class="input-label">Email</label><input class="finput" id="f-email" type="email" placeholder="your@email.com" value="${preserveValues.email||""}"/></div>
@@ -1287,89 +1734,8 @@ function renderLogin(mode="login",err="",preserveValues={},success=""){
   on("#tab-reg","click",()=>renderLogin("register"));
   on("#do-login","click",doLogin);
   on("#do-reg","click",doRegister);
-  on("#forgot-pw-link","click",e=>{e.preventDefault();renderForgotPassword(1);});
+  on("#forgot-pw-btn","click",()=>showForgotPasswordModal());
   on("#f-pass","keydown",e=>{if(e.key==="Enter"){mode==="login"?doLogin():doRegister();}});
-}
-
-// ── FORGOT PASSWORD ───────────────────────────────────────────────────────────
-function renderForgotPassword(step=1,err="",email=""){
-  show(`<div style="display:flex;min-height:100vh;align-items:center;justify-content:center;background:var(--main-bg);padding:20px">
-    <div style="width:100%;max-width:420px;background:#fff;border:1px solid var(--border);border-radius:20px;padding:36px 32px;box-shadow:0 10px 40px rgba(0,0,0,.06)">
-      <div style="text-align:center;margin-bottom:8px;font-size:34px">🔑</div>
-      <h2 style="font-size:20px;font-weight:800;color:var(--ink);text-align:center;margin-bottom:6px">${step===1?"Reset your password":"Check your email"}</h2>
-      <p style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:22px">${step===1
-        ?"Enter the email on your account and we'll send you a 6-digit reset code."
-        :`We sent a 6-digit code to <strong>${email}</strong>. Enter it below with your new password. The code expires in 15 minutes.`}</p>
-      ${err?`<div style="color:var(--danger);font-size:12px;margin-bottom:14px;padding:10px 14px;background:#FFF5F5;border-radius:10px;border:1px solid #FED7D7">${err}</div>`:""}
-      ${step===1?`
-        <div class="input-group"><label class="input-label">Email</label><input class="finput" id="fp-email" type="email" placeholder="your@email.com" value="${email||""}"/></div>
-        <button class="btn btn-primary" id="fp-send" style="width:100%;padding:13px;font-size:15px;border-radius:12px;justify-content:center">Send Reset Code →</button>
-      `:`
-        <input type="hidden" id="fp-email-hidden" value="${email}"/>
-        <div class="input-group"><label class="input-label">6-Digit Code</label><input class="finput" id="fp-code" inputmode="numeric" maxlength="6" placeholder="000000" style="letter-spacing:4px;font-weight:700;text-align:center"/></div>
-        <div class="input-group"><label class="input-label">New Password</label><input class="finput" id="fp-pass" type="password" placeholder="Create a new password"/></div>
-        <div class="input-group"><label class="input-label">Confirm New Password</label><input class="finput" id="fp-confirm" type="password" placeholder="Repeat new password"/></div>
-        <button class="btn btn-primary" id="fp-reset" style="width:100%;padding:13px;font-size:15px;border-radius:12px;justify-content:center">Update Password →</button>
-        <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:14px">Didn't get it? <a href="#" id="fp-resend" style="font-weight:700">Send a new code</a></p>
-      `}
-      <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:16px"><a href="#" id="fp-back" style="font-weight:600">← Back to sign in</a></p>
-    </div>
-  </div>`);
-  on("#fp-back","click",e=>{e.preventDefault();renderLogin("login");});
-  on("#fp-send","click",startPasswordReset);
-  on("#fp-email","keydown",e=>{if(e.key==="Enter")startPasswordReset();});
-  on("#fp-reset","click",completePasswordReset);
-  on("#fp-confirm","keydown",e=>{if(e.key==="Enter")completePasswordReset();});
-  on("#fp-resend","click",e=>{e.preventDefault();renderForgotPassword(1,"",email);});
-}
-
-async function startPasswordReset(){
-  const email=qs("#fp-email")?.value.trim();
-  if(!email){renderForgotPassword(1,"Please enter your email address.");return;}
-  btnLoad("fp-send",true,"Checking…");
-  // Look for a client account first, then an admin account
-  const{data:client}=await sb.from("clients").select("id,name,email").ilike("email",email).is("deleted_at",null).maybeSingle();
-  let role="client",account=client;
-  if(!account){
-    const{data:admin}=await sb.from("admins").select("id,name,email").ilike("email",email).maybeSingle();
-    if(admin){role="admin";account=admin;}
-  }
-  if(!account){renderForgotPassword(1,"No account found with that email address. Contact your coordinator if you need help.",email);return;}
-  const code=String(Math.floor(100000+Math.random()*900000));
-  const expires=new Date(Date.now()+15*60*1000).toISOString();
-  const{error:insertErr}=await sb.from("password_resets").insert({email:account.email,code,role,expires_at:expires,used:false});
-  if(insertErr){renderForgotPassword(1,"Something went wrong saving your reset request. Make sure the password_resets table exists in Supabase.",email);return;}
-  btnLoad("fp-send",true,"Sending code…");
-  try{
-    await emailjs.send(EJS_SERVICE,"template_ajgunbg",{
-      to_email:account.email,to_name:account.name||"there",
-      notification_type:"🔑 Password Reset Code",
-      details:`Your CloseFlow TC password reset code is: ${code} — it expires in 15 minutes. If you didn't request this, you can safely ignore this email.`,
-      property_address:"Account Security",
-      portal_link:"https://portal.closeflowtc.com",
-      timestamp:new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",hour12:true}),
-    });
-  }catch(e){renderForgotPassword(1,"Couldn't send the reset email. Please try again in a moment.",email);return;}
-  renderForgotPassword(2,"",account.email);
-}
-
-async function completePasswordReset(){
-  const email=qs("#fp-email-hidden")?.value;
-  const code=qs("#fp-code")?.value.trim();
-  const pass=qs("#fp-pass")?.value,confirm=qs("#fp-confirm")?.value;
-  if(!code||!pass||!confirm){renderForgotPassword(2,"Please fill in all fields.",email);return;}
-  if(pass!==confirm){renderForgotPassword(2,"Passwords don't match.",email);return;}
-  if(pass.length<6){renderForgotPassword(2,"Password must be at least 6 characters.",email);return;}
-  btnLoad("fp-reset",true,"Verifying…");
-  const{data:reset}=await sb.from("password_resets").select("*").eq("email",email).eq("code",code).eq("used",false).order("created_at",{ascending:false}).limit(1).maybeSingle();
-  if(!reset){renderForgotPassword(2,"That code isn't right. Double-check the 6-digit code from your email.",email);return;}
-  if(new Date(reset.expires_at)<new Date()){renderForgotPassword(2,"That code has expired. Send a new one below.",email);return;}
-  btnLoad("fp-reset",true,"Updating password…");
-  const table=reset.role==="admin"?"admins":"clients";
-  const{error:updateErr}=await sb.from(table).update({password:pass}).ilike("email",email);
-  if(updateErr){renderForgotPassword(2,"Couldn't update your password. Please try again.",email);return;}
-  await sb.from("password_resets").update({used:true}).eq("id",reset.id);
-  renderLogin("login","",{email},"✓ Password updated! Sign in with your new password.");
 }
 
 async function doLogin(){
@@ -1408,12 +1774,13 @@ async function doRegister(){
   const{data:newFile}=await sb.from("files").insert({client_id:client.id,address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"}).select().single();
   await sb.from("messages").insert({client_id:client.id,from_name:"CloseFlow TC",text:`Welcome, ${name}! Your account is ready. Your coordinator will be in touch shortly.`,date:new Date().toISOString().slice(0,10),is_admin:true});
   await markInviteCodeUsed(inviteResult.id);
+  // Notify the admin team a new client registered
+  await notifyAdmins(name,"🎉 New Client Registered",`${name} (${email}) just created an account using invite code ${code}.`);
   SESSION={role:"client",client};
   ACTIVE_FILE_ID=newFile?.id||null;
   saveSession();
   await checkUpcomingReminders();
   startNotifPolling(client.id);
-  await notifyAdmins(name,"🆕 New Client Registration",`${name} (${email}) just created an account using invite code ${code}.`);
   await renderClient(client.id,ACTIVE_FILE_ID,"overview",false,false);
   showOnboardingModal(client.id,async()=>{
     const{data:updated}=await sb.from("clients").select("*").eq("id",client.id).single();
@@ -1523,6 +1890,15 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
               </div>`;
             }).join("")}
           ${dl.length>0?`<button class="ov-nav-btn" data-navto="dates" style="margin-top:12px;width:100%;background:var(--sidebar-active);color:#fff;border:none;border-radius:10px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .2s" onmouseover="this.style.background='#1a2535'" onmouseout="this.style.background='var(--sidebar-active)'">&#128197; Sync to My Calendar</button>`:""}
+        </div>
+
+        <!-- Start a New Deal -->
+        <div class="card card-pad" style="border-left:4px solid var(--teal)">
+          <p style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">🚀 Start a New Deal</p>
+          <p style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:12px">Got a new property ready for coordination? Submit it and we'll take it from there.</p>
+          <a href="https://closeflowtc.com/deal-initiation-form-page" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;margin-bottom:8px;font-size:11px">📝 New Deal Form</a>
+          <a href="https://closeflowtc.com/seller-only-deal-initiation-form-page" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;font-size:11px">📝 Seller-Only Deal Form</a>
+          <p style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Use <strong>Seller-Only</strong> when you have a seller under contract but haven't identified a buyer yet.</p>
         </div>
       </div>
 
@@ -2024,17 +2400,23 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       <div style="overflow-y:auto;max-height:400px">
         ${nl.length===0?`<div style="padding:32px;text-align:center;color:var(--muted)"><p style="font-size:28px;margin-bottom:8px">🔔</p><p style="font-size:13px">No notifications yet.</p></div>`
         :nl.map(n=>{
-          const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":"ℹ️";
+          const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":n.type==="issue"?"🐞":"ℹ️";
           const bg=n.is_read?"var(--white)":"var(--teal-mist)";
           const dt=new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true});
-          return`<div style="padding:12px 18px;border-bottom:1px solid var(--border);background:${bg};transition:background .2s" id="notif-${n.id}">
+          // Determine destination tab from notification content
+          const msg=(n.message||"").toLowerCase();
+          const destTab=n.type==="reminder"?"dates":msg.includes("task")?"tasks":msg.includes("document")||msg.includes("upload")?"documents":msg.includes("message")?"messages":"overview";
+          return`<div class="notif-row" data-nid="${n.id}" data-read="${n.is_read}" data-tab="${destTab}" data-fid="${n.file_id||""}" style="padding:12px 18px;border-bottom:1px solid var(--border);background:${bg};transition:all .2s;cursor:pointer" onmouseover="this.style.background='var(--main-bg)'" onmouseout="this.style.background='${bg}'">
             <div style="display:flex;align-items:flex-start;gap:10px">
               <span style="font-size:16px;flex-shrink:0;margin-top:2px">${ic}</span>
               <div style="flex:1;min-width:0">
                 <p style="font-size:13px;color:var(--ink);line-height:1.55;margin-bottom:4px">${n.message}</p>
                 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
                   <p style="font-size:10px;color:var(--muted)">${dt}</p>
-                  <button class="notif-toggle" data-nid="${n.id}" data-read="${n.is_read}" style="font-size:10px;font-weight:700;color:var(--muted);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">${n.is_read?"Mark unread":"Mark read"}</button>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    ${!n.is_read?`<span style="font-size:9px;font-weight:700;background:var(--teal);color:#fff;padding:2px 7px;border-radius:20px">NEW</span>`:""}
+                    <button class="notif-toggle" data-nid="${n.id}" data-read="${n.is_read}" style="font-size:10px;font-weight:700;color:var(--muted);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">${n.is_read?"Mark unread":"Mark read"}</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2045,6 +2427,19 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     document.body.appendChild(panel);
 
     function wireToggles(){
+      // Row click — navigate
+      panel.querySelectorAll(".notif-row").forEach(row=>{
+        row.onclick=async(e)=>{
+          if(e.target.classList.contains("notif-toggle"))return;
+          const nid=row.dataset.nid;
+          const destTab=row.dataset.tab||"overview";
+          const destFid=row.dataset.fid||fileId;
+          await sb.from("notifications").update({is_read:true}).eq("id",nid);
+          panel.remove();
+          renderClient(clientId,destFid||fileId,destTab);
+        };
+      });
+      // Mark read/unread toggle
       panel.querySelectorAll(".notif-toggle").forEach(btn=>{
         btn.onclick=async(e)=>{
           e.stopPropagation();
@@ -2227,6 +2622,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   const currentAdmin=SESSION.admin;
   const isSuperAdmin=currentAdmin?.role==="superadmin";
   const allClients=clients||[];
+  _allClients=allClients; // sync to global for modal access
 
   // Determine active client
   const isGlobalView=["overview","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"].includes(tab);
@@ -2249,6 +2645,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       sb.from("client_requests").select("*,clients(name),files(address)").order("created_at",{ascending:false}),
     ]);
     allFiles=allFiles||[];allTasks2=allTasks2||[];allDates2=allDates2||[];allRequests=allRequests||[];
+    _allFiles=allFiles; // sync to global for modal access
   }
 
   let client=null,file=null,docs=null,msgs=null,tasks=null,dates=null,contacts=null,internalNotes=null,activityLog=null,clientRequests=null;
@@ -2288,7 +2685,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   if(tab==="overview"){
     const upcomingDates=(allDates2||[]).filter(d=>{const dt=new Date(d.date);const diff=(dt-today2)/(1000*60*60*24);return diff>=0&&diff<=14;}).slice(0,5);
     const dueTodayTasks=(allTasks2||[]).filter(t=>t.status!=="complete").slice(0,5);
-    const statusCounts=DEAL_STAGES.slice(0,8).map(s=>({s,count:(allFiles||[]).filter(f2=>(f2.deal_stage||"Deal Initiation")===s).length}));
+    
     mainContent=`
     <!-- Page header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
@@ -2305,52 +2702,34 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <!-- 6 stat cards -->
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:24px">
       ${[
-        {label:"Active Deals",val:allFiles.length,icon:"📁",bg:"#EBF8FF",tc:"#3182CE"},
-        {label:"In Escrow",val:inEscrow,icon:"🤝",bg:"#F0FFF4",tc:"#38A169"},
-        {label:"Closing This Week",val:closingThisWeek,icon:"📅",bg:"#FFFDE7",tc:"#D69E2E"},
-        {label:"Needs Attention",val:needsAttention,icon:"⚠️",bg:"#FFFAF0",tc:"#DD6B20"},
-        {label:"Tasks Due Today",val:tasksDueToday,icon:"✅",bg:"#FAF5FF",tc:"#805AD5"},
-        {label:"Pending Requests",val:pendingRequests,icon:"📨",bg:"#FFF5F5",tc:"#E53E3E"},
-      ].map(s=>`<div class="admin-stat" style="cursor:default">
+        {label:"Active Deals",val:allFiles.length,icon:"📁",bg:"#EBF8FF",tc:"#3182CE",dest:"deals"},
+        {label:"In Escrow",val:inEscrow,icon:"🤝",bg:"#F0FFF4",tc:"#38A169",dest:"deals"},
+        {label:"Closing This Week",val:closingThisWeek,icon:"📅",bg:"#FFFDE7",tc:"#D69E2E",dest:"calendar"},
+        {label:"Needs Attention",val:needsAttention,icon:"⚠️",bg:"#FFFAF0",tc:"#DD6B20",dest:"deals"},
+        {label:"Tasks Due Today",val:tasksDueToday,icon:"✅",bg:"#FAF5FF",tc:"#805AD5",dest:"tasks-all"},
+        {label:"Pending Requests",val:pendingRequests,icon:"📨",bg:"#FFF5F5",tc:"#E53E3E",dest:"requests"},
+      ].map(s=>`<div class="admin-stat" onclick="renderAdmin(null,null,'${s.dest}')" style="cursor:pointer" title="View ${s.label}">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
           <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;line-height:1.4">${s.label}</p>
           <div style="width:36px;height:36px;border-radius:10px;background:${s.bg};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${s.icon}</div>
         </div>
         <p style="font-size:30px;font-weight:900;color:var(--ink);line-height:1">${s.val}</p>
+        <p style="font-size:10px;color:var(--muted);margin-top:6px">Click to view →</p>
       </div>`).join("")}
     </div>
 
-    <!-- Pipeline + Donut row -->
-    <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;margin-bottom:24px">
-      <!-- Pipeline overview - chevron style -->
-      <div class="admin-card" style="margin-bottom:0">
-        <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:18px">Pipeline Overview</p>
-        <div style="display:flex;overflow-x:auto;gap:0;padding-bottom:4px">
-          ${statusCounts.map(({s,count},i)=>{
-            const colors=["#2D4A5A","#2A7A8E","#3A9DB5","#48B4CC","#56CAE3","#5BD1CC","#7EC8B0","#38A169"];
-            const bg=colors[i]||"#3A9DB5";
-            return`<div style="flex:1;min-width:90px;background:${bg};color:#fff;padding:14px 12px 12px;position:relative;clip-path:${i<statusCounts.length-1?"polygon(0 0,calc(100% - 12px) 0,100% 50%,calc(100% - 12px) 100%,0 100%,12px 50%)":"none"};margin-right:${i<statusCounts.length-1?"-2px":"0"}">
-              <p style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.7;margin-bottom:8px;line-height:1.3;padding-right:${i<statusCounts.length-1?"12px":"0"}">${s}</p>
-              <p style="font-size:24px;font-weight:900;line-height:1">${count}</p>
-            </div>`;
-          }).join("")}
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-          <p style="font-size:12px;color:var(--muted)">Total Active Deals: <strong style="color:var(--ink)">${allFiles.length}</strong></p>
-          <p style="font-size:12px;color:var(--muted)">Closed This Month: <strong style="color:var(--success)">${(allFiles||[]).filter(f2=>f2.deal_stage==="Closed/Recorded").length}</strong></p>
-        </div>
+    <!-- Deals by Status — full width -->
+    <div class="admin-card" style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <p style="font-weight:800;font-size:15px;color:var(--ink)">Deals by Status</p>
+        <p style="font-size:12px;color:var(--muted)">Total Active Deals: <strong style="color:var(--ink)">${allFiles.length}</strong> &nbsp;·&nbsp; Closed This Month: <strong style="color:var(--success)">${(allFiles||[]).filter(f2=>f2.deal_stage==="Closed/Recorded").length}</strong></p>
       </div>
-      <!-- Deals by status donut -->
-      <div class="admin-card" style="margin-bottom:0">
-        <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:14px">Deals by Status</p>
-        <div style="position:relative;width:120px;height:120px;margin:0 auto 14px">
-          <canvas id="admin-donut"></canvas>
-          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
-            <p style="font-size:22px;font-weight:900;color:var(--ink)">${allFiles.length}</p>
-            <p style="font-size:10px;color:var(--muted)">Total</p>
-          </div>
-        </div>
-        ${[{label:"Active",val:allFiles.filter(f2=>f2.deal_stage!=="Closed/Recorded"&&f2.deal_stage!=="Archived").length,color:"#3A9DB5"},{label:"Closed",val:allFiles.filter(f2=>f2.deal_stage==="Closed/Recorded").length,color:"#38A169"},{label:"Pending",val:pending,color:"#D69E2E"},{label:"On Hold",val:onHold,color:"#E53E3E"}].map(r=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0"><div style="display:flex;align-items:center;gap:7px"><div style="width:8px;height:8px;border-radius:50%;background:${r.color}"></div><span style="font-size:12px;color:var(--muted)">${r.label}</span></div><span style="font-size:12px;font-weight:700;color:var(--ink)">${r.val}</span></div>`).join("")}
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
+        ${[{label:"Active",val:allFiles.filter(f2=>f2.deal_stage!=="Closed/Recorded"&&f2.deal_stage!=="Archived").length,color:"#3A9DB5",bg:"var(--teal-mist)"},{label:"Closed",val:allFiles.filter(f2=>f2.deal_stage==="Closed/Recorded").length,color:"#38A169",bg:"#F0FFF4"},{label:"Pending",val:pending,color:"#D69E2E",bg:"#FFFFF0"},{label:"On Hold",val:onHold,color:"#E53E3E",bg:"#FFF5F5"}].map(r=>`
+          <div style="background:${r.bg};border:1.5px solid ${r.color}22;border-radius:14px;padding:18px;text-align:center">
+            <p style="font-size:28px;font-weight:900;color:${r.color};line-height:1;margin-bottom:6px">${r.val}</p>
+            <p style="font-size:12px;font-weight:600;color:var(--muted)">${r.label}</p>
+          </div>`).join("")}
       </div>
     </div>
 
@@ -2442,7 +2821,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       <!-- Generate form — always visible, clean card -->
       <div class="admin-card" style="margin-bottom:0;border:1.5px solid var(--teal-light);background:linear-gradient(135deg,var(--teal-mist),var(--white))">
         <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:4px">Generate New Invite Code</p>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:18px">Enter the client's email. A unique code is ready — save it and share it with them.</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:18px">Enter the client's email. A unique code is ready — click Generate to save it and send the invite automatically.</p>
         <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-bottom:12px">
           <div class="input-group" style="margin-bottom:0">
             <label class="input-label">Client Email Address *</label>
@@ -2462,8 +2841,8 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         </div>
         <div id="ic-msg" style="display:none;margin-bottom:10px;padding:10px 14px;border-radius:10px;font-size:13px"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-primary" id="save-ic">Generate &amp; Save Code</button>
-          <button class="btn btn-ghost btn-sm" id="copy-invite-msg">📋 Copy Message</button>
+          <button class="btn btn-primary" id="save-ic">📨 Generate &amp; Send Invite</button>
+          <button class="btn btn-ghost btn-sm" id="copy-invite-msg" title="Copy message to send manually if email fails">📋 Copy as Fallback</button>
         </div>
       </div>
 
@@ -2495,14 +2874,27 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
 
   else if(tab==="deals"){
+    const stageFiltered=allFiles.filter(d=>{
+      if(DEALS_STAGE_FILTER==="active")return d.deal_stage!=="Archived";
+      if(DEALS_STAGE_FILTER==="all")return true;
+      return(d.deal_stage||"Deal Initiation")===DEALS_STAGE_FILTER;
+    });
+    const archivedCount=allFiles.filter(d=>d.deal_stage==="Archived").length;
     mainContent=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-      <div><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Deals</h1><p style="font-size:13px;color:var(--muted)">All active transactions — click any deal to open</p></div>
-      ${allFiles.length>0?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer"><input type="checkbox" id="select-all-checkbox" class="bulk-checkbox"/> Select All</label>`:""}
+      <div><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Deals</h1><p style="font-size:13px;color:var(--muted)">${stageFiltered.length} deal${stageFiltered.length===1?"":"s"} shown${DEALS_STAGE_FILTER==="active"&&archivedCount>0?` · ${archivedCount} archived`:""} — click any deal to open</p></div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <select class="finput" style="width:auto;padding:8px 12px;font-size:12px;font-weight:600" onchange="setDealsFilter(this.value)">
+          <option value="active" ${DEALS_STAGE_FILTER==="active"?"selected":""}>All Active</option>
+          ${DEAL_STAGES.map(s=>`<option value="${s}" ${DEALS_STAGE_FILTER===s?"selected":""}>${s}${s==="Archived"&&archivedCount>0?` (${archivedCount})`:""}</option>`).join("")}
+          <option value="all" ${DEALS_STAGE_FILTER==="all"?"selected":""}>All Deals (incl. archived)</option>
+        </select>
+        ${stageFiltered.length>0?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer"><input type="checkbox" id="select-all-checkbox" class="bulk-checkbox"/> Select All</label>`:""}
+      </div>
     </div>
     <div class="admin-card" style="margin-bottom:0">
-      ${allFiles.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📁</p><p style="font-weight:600">No deals yet. Add a client to get started.</p></div>`
-      :allFiles.map(deal=>{
+      ${stageFiltered.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📁</p><p style="font-weight:600">${allFiles.length===0?"No deals yet. Add a client to get started.":"No deals match this filter."}</p></div>`
+      :stageFiltered.map(deal=>{
         const cl=deal.clients||{};
         const daysToClose=deal.closing_date?Math.round((new Date(deal.closing_date)-today2)/(1000*60*60*24)):null;
         return`<div class="admin-row deal-row" data-cid="${deal.client_id}" data-fid="${deal.id}" style="cursor:pointer;padding:14px;display:flex;align-items:center;gap:12px">
@@ -2531,6 +2923,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     mainContent=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
       <div><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Tasks</h1><p style="font-size:13px;color:var(--muted)">${allPending.length} active · ${allReview.length} pending review</p></div>
+      <button class="btn btn-primary btn-sm" onclick="showGlobalAddTaskModal()">+ Add Task</button>
     </div>
     ${allReview.length>0?`<div class="admin-card" style="border-left:4px solid var(--purple);margin-bottom:20px">
       <p style="font-size:11px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">⏳ Pending Your Review (${allReview.length})</p>
@@ -2583,29 +2976,61 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   }
 
   else if(tab==="calendar"){
-    const next30=(allDates2||[]).filter(d=>{const dt=new Date(d.date);const diff=(dt-today2)/(1000*60*60*24);return diff>=-1&&diff<=30;});
+    const calBase=new Date(today2.getFullYear(),today2.getMonth()+CAL_OFFSET,1);
+    const calY=calBase.getFullYear(),calM=calBase.getMonth();
+    const monthLabel=calBase.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+    const firstDow=new Date(calY,calM,1).getDay();
+    const daysInMonth=new Date(calY,calM+1,0).getDate();
+    const daysInPrev=new Date(calY,calM,0).getDate();
+    const totalCells=Math.ceil((firstDow+daysInMonth)/7)*7;
+    const pad=n=>String(n).padStart(2,"0");
+    const todayKey=`${today2.getFullYear()}-${pad(today2.getMonth()+1)}-${pad(today2.getDate())}`;
+    // Consistent color per deal
+    const CAL_COLORS=[["#EBF8FF","#2B6CB0"],["#F0FFF4","#276749"],["#FFFFF0","#B7791F"],["#FAF5FF","#6B46C1"],["#FFF5F7","#B83280"],["#E6FFFA","#2C7A7B"]];
+    const calColor=id=>{let h=0;const s=String(id||"");for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return CAL_COLORS[h%CAL_COLORS.length];};
+    // Map events by date key
+    const evMap={};
+    (allDates2||[]).forEach(d=>{if(!d.date)return;const k=String(d.date).slice(0,10);(evMap[k]=evMap[k]||[]).push(d);});
+    const monthEventCount=Object.keys(evMap).filter(k=>k.startsWith(`${calY}-${pad(calM+1)}-`)).reduce((n,k)=>n+evMap[k].length,0);
+    let cells="";
+    for(let i=0;i<totalCells;i++){
+      const dayNum=i-firstDow+1;
+      const inMonth=dayNum>=1&&dayNum<=daysInMonth;
+      const displayNum=inMonth?dayNum:(dayNum<1?daysInPrev+dayNum:dayNum-daysInMonth);
+      let cellDate;
+      if(dayNum<1)cellDate=new Date(calY,calM-1,daysInPrev+dayNum);
+      else if(dayNum>daysInMonth)cellDate=new Date(calY,calM+1,dayNum-daysInMonth);
+      else cellDate=new Date(calY,calM,dayNum);
+      const key=`${cellDate.getFullYear()}-${pad(cellDate.getMonth()+1)}-${pad(cellDate.getDate())}`;
+      const isToday=key===todayKey;
+      const evs=evMap[key]||[];
+      const shown=evs.slice(0,3);
+      const extra=evs.length-shown.length;
+      const isWeekend=i%7===0||i%7===6;
+      cells+=`<div style="min-height:96px;border:1px solid var(--border);border-radius:10px;padding:6px;background:${inMonth?(isWeekend?"var(--main-bg)":"var(--white)"):"#FAFAFA"};${isToday?"box-shadow:inset 0 0 0 2px var(--teal);":""}overflow:hidden">
+        <p style="font-size:11px;font-weight:${isToday?"900":"700"};color:${!inMonth?"#CBD5E0":isToday?"var(--teal-dark)":"var(--ink)"};margin-bottom:4px;display:flex;align-items:center;gap:4px">${isToday?`<span style="background:var(--teal);color:#fff;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:10px">${displayNum}</span> <span style="font-size:9px;text-transform:uppercase;letter-spacing:.05em">Today</span>`:displayNum}</p>
+        ${shown.map(d=>{const[bg,tc]=calColor(d.file_id||d.client_id);const clName=(d.clients||{}).name||"";const addr=(d.files||{}).address||"";
+          return`<div onclick="renderAdmin('${d.client_id}',null,'dates')" title="${(d.label||"").replace(/"/g,"&quot;")} — ${clName}${addr?` · ${addr.replace(/"/g,"&quot;")}`:""}" style="background:${bg};color:${tc};font-size:10px;font-weight:700;padding:3px 6px;border-radius:6px;margin-bottom:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.label||"Key date"}</div>`;}).join("")}
+        ${extra>0?`<p style="font-size:9px;font-weight:700;color:var(--muted)">+${extra} more</p>`:""}
+      </div>`;
+    }
     mainContent=`
-    <div style="margin-bottom:20px"><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Calendar</h1><p style="font-size:13px;color:var(--muted)">Upcoming key dates across all deals — next 30 days</p></div>
-    <div class="admin-card" style="margin-bottom:0">
-      ${next30.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📅</p><p>No upcoming dates in the next 30 days.</p></div>`
-      :next30.map(d=>{
-        const dt=new Date(d.date);
-        const diff=Math.round((dt-today2)/(1000*60*60*24));
-        const urgColor=diff<0?"var(--red)":diff===0?"var(--orange)":diff<=3?"var(--yellow)":"var(--teal)";
-        const urgBg=diff<0?"var(--red-bg)":diff===0?"var(--orange-bg)":diff<=3?"var(--yellow-bg)":"var(--teal-mist)";
-        const urgText=diff<0?`${Math.abs(diff)}d overdue`:diff===0?"Today":diff===1?"Tomorrow":`In ${diff} days`;
-        return`<div class="admin-row" style="cursor:pointer" onclick="renderAdmin('${d.client_id}',null,'dates')">
-          <div style="text-align:center;min-width:44px">
-            <p style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">${dt.toLocaleDateString("en-US",{month:"short"})}</p>
-            <p style="font-size:22px;font-weight:900;color:var(--ink);line-height:1">${dt.getDate()}</p>
-          </div>
-          <div style="flex:1;min-width:0">
-            <p style="font-size:13px;font-weight:700;color:var(--ink)">${d.label}</p>
-            <p style="font-size:11px;color:var(--muted)">${(d.clients||d)?.name||""} · ${(d.files||d)?.address||""}</p>
-          </div>
-          <span style="font-size:11px;font-weight:700;color:${urgColor};background:${urgBg};padding:4px 10px;border-radius:20px;border:1px solid ${urgColor};white-space:nowrap">${urgText}</span>
-          <span style="font-size:18px;color:var(--teal)">›</span>
-        </div>`;}).join("")}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+      <div><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Calendar</h1><p style="font-size:13px;color:var(--muted)">${monthEventCount} key date${monthEventCount===1?"":"s"} in ${monthLabel} · hover any event for details, click to open the deal</p></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="calNav(-1)" style="padding:6px 12px;font-size:15px;line-height:1">‹</button>
+        <p style="font-size:14px;font-weight:800;color:var(--ink);min-width:150px;text-align:center">${monthLabel}</p>
+        <button class="btn btn-ghost btn-sm" onclick="calNav(1)" style="padding:6px 12px;font-size:15px;line-height:1">›</button>
+        ${CAL_OFFSET!==0?`<button class="btn btn-teal btn-sm" onclick="calToday()" style="font-size:11px">Today</button>`:""}
+      </div>
+    </div>
+    <div class="admin-card" style="margin-bottom:0;overflow-x:auto">
+      <div style="min-width:640px">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px">
+          ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>`<p style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;text-align:center;padding:4px 0">${d}</p>`).join("")}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">${cells}</div>
+      </div>
     </div>`;
   }
 
@@ -2632,7 +3057,10 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   else if(tab==="documents-all"){
     const allDocs2=(await sb.from("documents").select("*,clients(name),files(address)").order("created_at",{ascending:false})).data||[];
     mainContent=`
-    <div style="margin-bottom:20px"><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Documents</h1><p style="font-size:13px;color:var(--muted)">${allDocs2.length} total documents across all deals</p></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+      <div><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Documents</h1><p style="font-size:13px;color:var(--muted)">${allDocs2.length} total documents across all deals</p></div>
+      <button class="btn btn-primary btn-sm" onclick="showGlobalUploadDocModal()">+ Upload Document</button>
+    </div>
     <div class="admin-card" style="margin-bottom:0">
       ${allDocs2.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📁</p><p>No documents yet.</p></div>`
       :allDocs2.map(doc=>`<div class="admin-row" style="cursor:default">
@@ -2743,6 +3171,19 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <div style="margin-bottom:20px">
       <h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Settings</h1>
       <p style="font-size:13px;color:var(--muted)">Service incident notices and portal-wide controls</p>
+    </div>
+
+    <!-- Reset My Password -->
+    <div class="admin-card" style="border-left:4px solid var(--teal);margin-bottom:20px">
+      <div style="margin-bottom:14px">
+        <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:4px">🔑 Reset My Password</p>
+        <p style="font-size:12px;color:var(--muted)">Send a password reset link to your email address. The link expires in 1 hour.</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <p style="font-size:13px;color:var(--ink)">Signed in as <strong>${currentAdmin?.email||"your account"}</strong></p>
+        <button id="admin-self-reset-btn" class="btn btn-primary btn-sm">Send Reset Link to My Email</button>
+      </div>
+      <div id="admin-reset-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600"></div>
     </div>
 
     <!-- Current incident status -->
@@ -3319,7 +3760,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <div style="display:flex;align-items:center;gap:10px">
           ${adminBellHtml}
           <div style="display:flex;align-items:center;gap:10px">
-            ${avatarElWithDropdown(currentAdmin?.name||"Admin","",34,true)}
+            ${avatarElWithDropdown(currentAdmin?.name||"Admin",currentAdmin?.photo_url||"",34,true)}
             <div>
               <p style="font-weight:700;font-size:13px;color:#fff">${currentAdmin?.name||"Admin"}</p>
               <p style="font-size:10px;color:rgba(255,255,255,.4)">${isSuperAdmin?"Super Admin":"Coordinator"}</p>
@@ -3376,6 +3817,28 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   on("#admin-signout","click",()=>animatedSignOut());
 
   // Service incident controls
+  on("#admin-self-reset-btn","click",async()=>{
+    const email=currentAdmin?.email;
+    if(!email)return;
+    btnLoad("admin-self-reset-btn",true,"Sending…");
+    const token=generateToken();
+    await sb.from("password_resets").delete().eq("email",email).eq("used",false);
+    const expiresAt=new Date(Date.now()+3600000).toISOString();
+    await sb.from("password_resets").insert({email,token,user_type:"admin",used:false,expires_at:expiresAt});
+    const resetLink=`${window.location.origin}${window.location.pathname}?reset=${token}`;
+    try{
+      await emailjs.send(EJS_SERVICE,"template_ajgunbg",{
+        to_email:email,to_name:currentAdmin?.name||email,
+        notification_type:"🔑 Password Reset Request",
+        details:`Click the link below to reset your CloseFlow TC admin password. This link expires in 1 hour.\n\n${resetLink}\n\nIf you didn't request this, you can ignore this email.`,
+        property_address:"",portal_link:resetLink,
+        timestamp:new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",hour12:true}),
+      });
+    }catch(e){console.error("Admin reset email failed:",e);}
+    btnLoad("admin-self-reset-btn",false,"✓ Sent!","Send Reset Link to My Email");
+    const statusEl=qs("#admin-reset-status");
+    if(statusEl){statusEl.style.display="block";statusEl.style.background="#F0FFF4";statusEl.style.color="#276749";statusEl.textContent=`✅ Reset link sent to ${email}. Check your inbox — it expires in 1 hour.`;}
+  });
   on("#post-incident-btn","click",()=>{
     qs("#post-incident-btn")?.setAttribute("data-active","true");
     qs("#post-restored-btn")?.removeAttribute("data-active");
@@ -3454,11 +3917,10 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const{data:existing}=await sb.from("invite_codes").select("id").eq("assigned_to",email).eq("used",false);
     if(existing&&existing.length>0){if(msg){msg.style.display="block";msg.style.background="#FFFDE7";msg.style.color="var(--yellow)";msg.textContent=`An active code already exists for ${email}. Delete it first if you need a new one.`;}return;}
     btnLoad("save-ic",true,"Saving…");
-    // Try with assigned_email first, fall back without it if column doesn't exist
+    // Save the code
     let error;
     ({error}=await sb.from("invite_codes").insert({code,assigned_to:email,assigned_email:email,used:false}));
     if(error){
-      // Retry without assigned_email in case column hasn't been added yet
       ({error}=await sb.from("invite_codes").insert({code,assigned_to:email,used:false}));
     }
     if(error){
@@ -3466,17 +3928,45 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent=`Error saving code: ${error.message}`;}
       return;
     }
-    btnLoad("save-ic",false,"✓ Saved!","Generate & Save Code");
-    if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent=`Code ${code} created for ${email}. Copy the message above and share it.`;}
-    setTimeout(()=>renderAdmin(null,null,"invite-codes"),1500);
+    // Auto-send invite email to the client
+    btnLoad("save-ic",true,"Sending invite…");
+    try{
+      await emailjs.send(EJS_SERVICE,"template_ajgunbg",{
+        to_email:email,
+        to_name:email,
+        notification_type:"🔑 Your CloseFlow TC Portal Is Ready",
+        details:`Your coordinator has set up your client portal. Register at portal.closeflowtc.com using your email address and this invite code:\n\n${code}\n\nThis code is tied to your email address — only you can use it. If you have any questions, reply to this email or call us at (330) 583-4443.`,
+        property_address:"",
+        portal_link:"https://portal.closeflowtc.com",
+        timestamp:new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",hour12:true}),
+      });
+      btnLoad("save-ic",false,"✓ Saved & Sent!","Generate & Save Code");
+      if(msg){
+        msg.style.display="block";
+        msg.style.background="#F0FFF4";
+        msg.style.color="#276749";
+        msg.textContent=`✅ Code ${code} saved and invite email sent to ${email}.`;
+      }
+    }catch(emailErr){
+      // Code was saved — email failed. Show partial success and let them copy manually.
+      console.error("Invite email failed:",emailErr);
+      btnLoad("save-ic",false,"✓ Saved","Generate & Save Code");
+      if(msg){
+        msg.style.display="block";
+        msg.style.background="#FFFDE7";
+        msg.style.color="var(--yellow)";
+        msg.textContent=`Code ${code} saved, but the invite email failed to send. Copy the message above and send it manually to ${email}.`;
+      }
+    }
+    setTimeout(()=>renderAdmin(null,null,"invite-codes"),2500);
   });
   qsa(".copy-ic-btn").forEach(btn=>{
     btn.addEventListener("click",()=>{
       const code=btn.dataset.code;
       const email=btn.dataset.email;
       const text=email
-        ?`Hi — your CloseFlow TC portal is ready.\n\nRegister at portal.closeflowtc.com using your email address (${email}) and this invite code:\n\n${code}\n\nIf you have any questions, reply to this email or call us at (330) 583-4443.`
-        :code;
+        ?`Hi — your CloseFlow TC portal is ready.\n\nRegister at portal.closeflowtc.com using your email address (${email}) and this invite code:\n\n${code}\n\nIf you have any questions, reply to this email or call us at (330) 583-4443.\n\nThe CloseFlow TC Team`
+        :`Hi — your CloseFlow TC portal is ready.\n\nRegister at portal.closeflowtc.com using your email address and this invite code:\n\n${code}\n\nIf you have any questions, call us at (330) 583-4443.\n\nThe CloseFlow TC Team`;
       navigator.clipboard.writeText(text);
       const orig=btn.textContent;
       btn.textContent="✓ Copied!";
@@ -3608,6 +4098,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
   // Delete client (from header button)
   on("#delete-client-btn","click",()=>confirmDeleteClient(activeClientId,client?.name));
+  window.showAddDealModal=showAddDealModal;
 
   // Delete client (from overview quick-delete buttons)
   qsa(".quick-delete-client").forEach(btn=>{
@@ -3627,7 +4118,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Client</label>
           <select id="new-deal-client" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--ink);background:#fff">
             <option value="">Select a client...</option>
-            ${allClients.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
+            ${_allClients.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
           </select>
         </div>
         <div>
@@ -3678,30 +4169,47 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <button id="cancel-delete" class="btn btn-ghost">Cancel</button>
         <button id="confirm-delete" class="btn btn-danger" style="background:var(--danger);color:#fff">Yes, Delete</button>
       </div>
+      <p class="delete-error" style="display:none;margin-top:12px;font-size:12px;color:var(--danger);text-align:center;padding:8px;background:#FFF5F5;border-radius:8px"></p>
     </div>`;
     document.body.appendChild(overlay);
     overlay.querySelector("#cancel-delete").addEventListener("click",()=>overlay.remove());
     overlay.querySelector("#confirm-delete").addEventListener("click",async()=>{
-      // Hard delete — remove all related data first, then client
-      const{data:clientFiles}=await sb.from("files").select("id").eq("client_id",cid);
-      const fileIds=(clientFiles||[]).map(f=>f.id);
-      if(fileIds.length){
-        await sb.from("tasks").delete().in("file_id",fileIds);
-        await sb.from("key_dates").delete().in("file_id",fileIds);
-        await sb.from("contacts").delete().in("file_id",fileIds);
-        await sb.from("documents").delete().in("file_id",fileIds);
+      const btn=overlay.querySelector("#confirm-delete");
+      btn.textContent="Deleting…";btn.disabled=true;
+      try{
+        // Get all file IDs for this client first
+        const{data:clientFiles}=await sb.from("files").select("id").eq("client_id",cid);
+        const fileIds=(clientFiles||[]).map(f=>f.id);
+        // Delete all file-level related data
+        if(fileIds.length){
+          await sb.from("tasks").delete().in("file_id",fileIds);
+          await sb.from("key_dates").delete().in("file_id",fileIds);
+          await sb.from("contacts").delete().in("file_id",fileIds);
+          await sb.from("documents").delete().in("file_id",fileIds);
+          await sb.from("activity_log").delete().in("file_id",fileIds);
+          await sb.from("internal_notes").delete().in("file_id",fileIds);
+          await sb.from("client_requests").delete().in("file_id",fileIds);
+        }
+        // Delete all client-level related data
+        await sb.from("files").delete().eq("client_id",cid);
+        await sb.from("messages").delete().eq("client_id",cid);
+        await sb.from("notifications").delete().eq("client_id",cid);
+        await sb.from("feedback").delete().eq("client_id",cid);
+        // Finally delete the client record
+        const{error}=await sb.from("clients").delete().eq("id",cid);
+        if(error)throw error;
+        overlay.remove();
+        await renderAdmin(null,null,"overview");
+      }catch(err){
+        console.error("Delete failed:",err);
+        btn.textContent="Yes, Delete";btn.disabled=false;
+        const errEl=overlay.querySelector(".delete-error");
+        if(errEl){errEl.textContent=`Delete failed: ${err.message}. Check Supabase RLS policies.`;errEl.style.display="block";}
       }
-      await sb.from("files").delete().eq("client_id",cid);
-      await sb.from("messages").delete().eq("client_id",cid);
-      await sb.from("notifications").delete().eq("client_id",cid);
-      await sb.from("clients").delete().eq("id",cid);
-      overlay.remove();
-      await renderAdmin(null,null,"overview");
     });
   }
   if(tab==="overview"){
-    const ctx=qs("#admin-donut");
-    if(ctx)new Chart(ctx,{type:"doughnut",data:{labels:["Active","Pending","On Hold","Closed"],datasets:[{data:[active||1,pending,onHold,closed],backgroundColor:["#3A9DB5","#D69E2E","#E53E3E","#38A169"],borderWidth:0,hoverOffset:4}]},options:{cutout:"72%",plugins:{legend:{display:false}},animation:{animateScale:true}}});
+    // Dashboard donut removed — replaced with status summary cards
   }
   // Initialize bulk selection for deals, clients, etc.
   if(tab==="deals")initBulkSelection("deals");
@@ -3853,11 +4361,14 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       <div style="overflow-y:auto;max-height:400px">
         ${nl.length===0?`<div style="padding:32px;text-align:center;color:var(--muted)"><p style="font-size:28px;margin-bottom:8px">🔔</p><p style="font-size:13px">No notifications yet.</p></div>`
         :nl.map(n=>{
-          const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":"ℹ️";
+          const ic=n.type==="reminder"?"📅":n.type==="update"?"✏️":n.type==="issue"?"🐞":"ℹ️";
           const bg=n.is_read?"var(--white)":"var(--teal-mist)";
           const dt=new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true});
-          const clientLabel=n.clients?.name?`<span style="font-size:10px;font-weight:700;background:var(--teal-mist);color:var(--teal-dark);padding:2px 8px;border-radius:20px;margin-left:6px">${n.clients.name}</span>`:"";
-          return`<div style="padding:12px 18px;border-bottom:1px solid var(--border);background:${bg};transition:background .2s">
+          const clientLabel=n.clients?.name?`<span style="font-size:10px;font-weight:700;background:var(--teal-mist);color:var(--teal-dark);padding:2px 8px;border-radius:20px">${n.clients.name}</span>`:"";
+          // Smart routing for admins
+          const msg=(n.message||"").toLowerCase();
+          const adminDest=n.type==="issue"?"issues":msg.includes("message")?"messages-all":msg.includes("document")||msg.includes("upload")?"documents-all":msg.includes("feedback")||msg.includes("rating")?"feedback":msg.includes("request")?"requests":msg.includes("task")&&n.client_id?"client":msg.includes("date")||n.type==="reminder"?"calendar":"client";
+          return`<div class="admin-notif-row" data-nid="${n.id}" data-read="${n.is_read}" data-dest="${adminDest}" data-cid="${n.client_id||""}" data-fid="${n.file_id||""}" style="padding:12px 18px;border-bottom:1px solid var(--border);background:${bg};transition:all .2s;cursor:pointer" onmouseover="this.style.background='var(--main-bg)'" onmouseout="this.style.background='${bg}'">
             <div style="display:flex;align-items:flex-start;gap:10px">
               <span style="font-size:16px;flex-shrink:0;margin-top:2px">${ic}</span>
               <div style="flex:1;min-width:0">
@@ -3867,7 +4378,10 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
                 </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
                   <p style="font-size:10px;color:var(--muted)">${dt}</p>
-                  <button class="admin-notif-toggle" data-nid="${n.id}" data-read="${n.is_read}" style="font-size:10px;font-weight:700;color:var(--muted);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">${n.is_read?"Mark unread":"Mark read"}</button>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    ${!n.is_read?`<span style="font-size:9px;font-weight:700;background:var(--teal);color:#fff;padding:2px 7px;border-radius:20px">NEW</span>`:""}
+                    <button class="admin-notif-toggle" data-nid="${n.id}" data-read="${n.is_read}" style="font-size:10px;font-weight:700;color:var(--muted);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">${n.is_read?"Mark unread":"Mark read"}</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3877,6 +4391,28 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     panel.innerHTML=buildPanel();
     document.body.appendChild(panel);
     function wireToggles(){
+      // Row click — navigate
+      panel.querySelectorAll(".admin-notif-row").forEach(row=>{
+        row.onclick=async(e)=>{
+          if(e.target.classList.contains("admin-notif-toggle"))return;
+          const nid=row.dataset.nid;
+          const dest=row.dataset.dest||"overview";
+          const cid=row.dataset.cid||null;
+          const fid=row.dataset.fid||null;
+          await sb.from("notifications").update({is_read:true}).eq("id",nid);
+          panel.remove();
+          // Global tabs go straight there; client tabs need cid
+          const globalTabs=["overview","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+          if(globalTabs.includes(dest)){
+            renderAdmin(null,null,dest);
+          }else if(cid){
+            renderAdmin(cid,fid||null,"client");
+          }else{
+            renderAdmin(null,null,"overview");
+          }
+        };
+      });
+      // Mark read/unread toggle
       panel.querySelectorAll(".admin-notif-toggle").forEach(btn=>{
         btn.onclick=async(e)=>{
           e.stopPropagation();
@@ -3969,6 +4505,11 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
 // ── APP INIT ──────────────────────────────────────────────────────────────────
 async function bootApp(){
+  // Check for password reset token in URL first
+  const urlParams=new URLSearchParams(window.location.search);
+  const resetToken=urlParams.get("reset");
+  if(resetToken){await showResetPasswordForm(resetToken);return;}
+
   const restored=await loadSession();
   if(restored&&SESSION){
     if(SESSION.role==="admin"){
