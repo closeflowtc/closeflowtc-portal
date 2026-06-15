@@ -403,6 +403,13 @@ const TOUR_STEPS=[
   },
 ];
 let SESSION=null,TOUR_ACTIVE=false,TOUR_STEP=0,TOUR_CLIENT_ID=null,ACTIVE_FILE_ID=null;
+let VIEW_AS_CLIENT=null; // {id,name} when an admin is viewing a client's portal read-only
+let CLIENTS_SEARCH="",CLIENTS_STATUS_FILTER="all",CLIENTS_SORT="recent";
+function setClientsSearch(v){CLIENTS_SEARCH=v;}
+function setClientsFilter(v){CLIENTS_STATUS_FILTER=v;renderAdmin(null,null,"clients");}
+function setClientsSort(v){CLIENTS_SORT=v;renderAdmin(null,null,"clients");}
+function enterViewAsClient(cid,cname){VIEW_AS_CLIENT={id:cid,name:cname};renderClient(cid,null,"overview");}
+function exitViewAsClient(){const c=VIEW_AS_CLIENT;VIEW_AS_CLIENT=null;renderAdmin(c?.id||null,null,"client");}
 let CAL_OFFSET=0,DEALS_STAGE_FILTER="active";
 function calNav(d){CAL_OFFSET+=d;renderAdmin(null,null,"calendar");}
 function calToday(){CAL_OFFSET=0;renderAdmin(null,null,"calendar");}
@@ -2384,6 +2391,10 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     </div>
     <div class="main-area">
       <div id="incident-banner" class="incident-banner"></div>
+      ${VIEW_AS_CLIENT?`<div style="background:linear-gradient(135deg,#553C9A,#6B46C1);color:#fff;padding:10px 24px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;z-index:200">
+        <span>👁 Admin View — you're seeing <strong>${VIEW_AS_CLIENT.name}</strong>'s portal exactly as they see it. Read-only; changes are disabled.</span>
+        <button onclick="exitViewAsClient()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer">← Exit to Admin</button>
+      </div>`:""}
       <div class="topbar" style="background:var(--sidebar-active);border-bottom:1px solid rgba(255,255,255,.08);padding:0 24px">
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png" style="height:32px;width:auto;filter:brightness(10)" alt="CloseFlow TC"/>
@@ -2508,7 +2519,18 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   // Nav
   qsa(".client-nav-btn").forEach(btn=>btn.addEventListener("click",()=>renderClient(clientId,fileId,btn.dataset.tab)));
-  on("#signout","click",()=>animatedSignOut());
+  on("#signout","click",()=>VIEW_AS_CLIENT?exitViewAsClient():animatedSignOut());
+
+  // Read-only guard for admin View-as-Client mode
+  const roBlock=()=>{
+    if(!VIEW_AS_CLIENT)return false;
+    const t=document.createElement("div");
+    t.style.cssText="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#553C9A;color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:3000;box-shadow:0 8px 24px rgba(0,0,0,.2);animation:slideUp .3s ease";
+    t.textContent="👁 Read-only admin view — actions are disabled here.";
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),2200);
+    return true;
+  };
 
   // Property selector
   on("#property-select","change",async e=>{
@@ -2535,13 +2557,14 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   const ml=qs("#msg-list");if(ml)ml.scrollTop=ml.scrollHeight;
 
-  on("#send-msg","click",async()=>{const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;btnLoad("send-msg",true,"Sending…");await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);input.value="";await renderClient(clientId,fileId,"messages");});
-  on("#msg-input","keydown",async e=>{if(e.key!=="Enter")return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);e.target.value="";await renderClient(clientId,fileId,"messages");});
+  on("#send-msg","click",async()=>{if(roBlock())return;const input=qs("#msg-input");const text=input?.value.trim();if(!text)return;btnLoad("send-msg",true,"Sending…");await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);input.value="";await renderClient(clientId,fileId,"messages");});
+  on("#msg-input","keydown",async e=>{if(e.key!=="Enter")return;if(roBlock())return;const text=e.target.value.trim();if(!text)return;await sb.from("messages").insert({client_id:clientId,from_name:client.name,text,date:new Date().toISOString().slice(0,10),is_admin:false});await notifyAdmins(client.name,"💬 New Message",`"${text.slice(0,120)}"`);e.target.value="";await renderClient(clientId,fileId,"messages");});
 
   // ── TASK HANDLERS ───────────────────────────────────────────────────────────
   // Type 1: Checkbox tasks — client clicks to mark complete
   qsa(".task-check.client-checkable").forEach(el=>{
     el.addEventListener("click",async()=>{
+      if(roBlock())return;
       const tid=el.dataset.tid;
       el.style.background="var(--teal)";el.style.borderColor="var(--teal)";
       el.innerHTML=`<span class="btn-spinner" style="width:10px;height:10px;border-width:1.5px"></span>`;
@@ -2553,6 +2576,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   // Type 2: Upload tasks — client submits a document
   qsa(".task-upload-btn").forEach(btn=>{
     btn.addEventListener("click",async()=>{
+      if(roBlock())return;
       const tid=btn.dataset.tid;
       const urlInput=document.querySelector(`.task-doc-url[data-tid="${tid}"]`);
       const nameInput=document.querySelector(`.task-doc-name[data-tid="${tid}"]`);
@@ -2571,6 +2595,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   });
 
   on("#save-acc","click",async()=>{
+    if(roBlock())return;
     const name=qs("#acc-name")?.value.trim();const phone=qs("#acc-phone")?.value.trim();
     const address=qs("#acc-address")?.value.trim();const email=qs("#acc-email")?.value.trim();
     btnLoad("save-acc",true,"Saving…");
@@ -2580,6 +2605,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     SESSION.client={...SESSION.client,name,phone,address,email};
   });
   on("#save-pw","click",async()=>{
+    if(roBlock())return;
     const curr=qs("#pw-current")?.value;const nw=qs("#pw-new")?.value;const conf=qs("#pw-confirm")?.value;
     const msg=qs("#pw-msg");
     if(!curr||!nw||!conf){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in all fields.";}return;}
@@ -2591,10 +2617,11 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Password updated!";}
     SESSION.client={...SESSION.client,password:nw};
   });
-  on("#photo-file","change",async e=>{const file2=e.target.files[0];if(!file2)return;const reader=new FileReader();reader.onload=async ev=>{await sb.from("clients").update({photo_url:ev.target.result}).eq("id",clientId);await renderClient(clientId,fileId,"account");};reader.readAsDataURL(file2);});
+  on("#photo-file","change",async e=>{if(roBlock())return;const file2=e.target.files[0];if(!file2)return;const reader=new FileReader();reader.onload=async ev=>{await sb.from("clients").update({photo_url:ev.target.result}).eq("id",clientId);await renderClient(clientId,fileId,"account");};reader.readAsDataURL(file2);});
   on("#show-upload-form","click",()=>{const f2=qs("#upload-form");if(f2)f2.style.display="block";const b=qs("#show-upload-form");if(b)b.style.display="none";});
   on("#cancel-upload","click",()=>{const f2=qs("#upload-form");if(f2)f2.style.display="none";const b=qs("#show-upload-form");if(b)b.style.display="block";});
   on("#submit-cdoc","click",async()=>{
+    if(roBlock())return;
     const name=qs("#cdoc-name")?.value.trim();const url=qs("#cdoc-url")?.value.trim();
     const category=qs("#cdoc-cat")?.value||"Other";const description=qs("#cdoc-desc")?.value.trim()||"";
     const msg=qs("#cdoc-msg");
@@ -2621,6 +2648,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     };
     qsa(".star-btn").forEach(btn=>{btn.addEventListener("click",()=>{acctSelectedRating=parseInt(btn.dataset.val);resetStars();});});
     on("#submit-feedback","click",async()=>{
+      if(roBlock())return;
       if(!acctSelectedRating){const msg=qs("#fb-msg");if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please select a star rating first.";}return;}
       const comment=qs("#fb-comment")?.value.trim()||"";
       btnLoad("submit-feedback",true,"Submitting…");
@@ -2659,8 +2687,8 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   _allClients=allClients; // sync to global for modal access
 
   // Determine active client
-  const isGlobalView=["overview","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"].includes(tab);
-  const GLOBAL_TABS_ARR=["overview","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+  const isGlobalView=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"].includes(tab);
+  const GLOBAL_TABS_ARR=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
   const activeClientId=selClientId||(allClients[0]?.id)||null;
   let clientFiles=[];
   if(activeClientId&&!isGlobalView){
@@ -2949,6 +2977,94 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           <span style="font-size:20px;color:var(--teal);font-weight:300;flex-shrink:0">›</span>
         </div>`;}).join("")}
     </div>`;
+  }
+
+  else if(tab==="clients"){
+    // Build per-client enriched data from already-loaded global data
+    const filesByClient={};
+    (allFiles||[]).forEach(f2=>{(filesByClient[f2.client_id]=filesByClient[f2.client_id]||[]).push(f2);});
+    const datesByClient={};
+    (allDates2||[]).forEach(d=>{if(!d.date)return;(datesByClient[d.client_id]=datesByClient[d.client_id]||[]).push(d);});
+    const tasksByClient={};
+    (allTasks2||[]).forEach(t=>{if(t.status==="complete")return;(tasksByClient[t.client_id]=tasksByClient[t.client_id]||[]).push(t);});
+
+    const q=CLIENTS_SEARCH.trim().toLowerCase();
+    let rows=allClients.filter(c=>{
+      if(CLIENTS_STATUS_FILTER!=="all"&&(c.status||"Pending")!==CLIENTS_STATUS_FILTER)return false;
+      if(!q)return true;
+      return[c.name,c.email,c.business_name].filter(Boolean).some(v=>String(v).toLowerCase().includes(q));
+    });
+    // Sort
+    rows.sort((a,b)=>{
+      if(CLIENTS_SORT==="name")return(a.name||"").localeCompare(b.name||"");
+      if(CLIENTS_SORT==="closing"){
+        const na=(datesByClient[a.id]||[]).map(d=>d.date).sort()[0]||"9999";
+        const nb=(datesByClient[b.id]||[]).map(d=>d.date).sort()[0]||"9999";
+        return na.localeCompare(nb);
+      }
+      // recent (default) — newest created first
+      return new Date(b.created_at||0)-new Date(a.created_at||0);
+    });
+
+    const total=allClients.length;
+    const activeN=allClients.filter(c=>(c.status||"Pending")==="Active").length;
+    const pendingN=allClients.filter(c=>(c.status||"Pending")==="Pending").length;
+    const closingWeek=(allFiles||[]).filter(f2=>{if(!f2.closing_date)return false;const d=new Date(f2.closing_date);const diff=(d-today2)/(1000*60*60*24);return diff>=0&&diff<=7;}).length;
+
+    const summaryCard=(label,val,color)=>`<div style="flex:1;min-width:120px;background:var(--white);border:1px solid var(--border);border-radius:14px;padding:14px 18px"><p style="font-size:24px;font-weight:900;color:${color};line-height:1">${val}</p><p style="font-size:11px;color:var(--muted);font-weight:600;margin-top:4px;text-transform:uppercase;letter-spacing:.05em">${label}</p></div>`;
+
+    const card=(c)=>{
+      const cf=filesByClient[c.id]||[];
+      const nextDate=(datesByClient[c.id]||[]).filter(d=>new Date(d.date)>=today2).sort((a,b)=>a.date.localeCompare(b.date))[0];
+      const openTasks=(tasksByClient[c.id]||[]).length;
+      const sc=STATUS[c.status||"Pending"]||{bg:"#EDF2F7",text:"#4A5568",dot:"#A0AEC0"};
+      return`<div class="client-card" data-cid="${c.id}" style="background:var(--white);border:1px solid var(--border);border-radius:16px;padding:18px;cursor:pointer;transition:all .2s;box-shadow:var(--shadow)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--shadow-hover)';this.style.borderColor='var(--teal-light)'" onmouseout="this.style.transform='none';this.style.boxShadow='var(--shadow)';this.style.borderColor='var(--border)'">
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px">
+          ${avatarEl(c.name,c.photo_url||"",44)}
+          <div style="flex:1;min-width:0">
+            <p style="font-size:14px;font-weight:800;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</p>
+            <p style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.business_name||c.email||""}</p>
+          </div>
+          <span class="badge" style="background:${sc.bg};color:${sc.text};flex-shrink:0"><span class="badge-dot" style="background:${sc.dot}"></span>${c.status||"Pending"}</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0;background:var(--main-bg);border-radius:10px;padding:8px 10px;text-align:center"><p style="font-size:16px;font-weight:800;color:var(--ink);line-height:1">${cf.length}</p><p style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px">${cf.length===1?"Property":"Properties"}</p></div>
+          <div style="flex:1;min-width:0;background:var(--main-bg);border-radius:10px;padding:8px 10px;text-align:center"><p style="font-size:16px;font-weight:800;color:${openTasks>0?"var(--teal)":"var(--ink)"};line-height:1">${openTasks}</p><p style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Open Tasks</p></div>
+          <div style="flex:1.4;min-width:0;background:var(--main-bg);border-radius:10px;padding:8px 10px;text-align:center"><p style="font-size:12px;font-weight:800;color:var(--ink);line-height:1.2">${nextDate?fmtDate(nextDate.date):"—"}</p><p style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Next Date</p></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="open-client-btn btn btn-primary btn-sm" data-cid="${c.id}" style="flex:1;justify-content:center">Open File</button>
+          <button class="viewas-client-btn btn btn-ghost btn-sm" data-cid="${c.id}" data-cname="${(c.name||"").replace(/"/g,"&quot;")}" style="flex:1;justify-content:center" title="See exactly what this client sees, read-only">👁 View as Client</button>
+        </div>
+      </div>`;
+    };
+
+    mainContent=`
+    <div style="margin-bottom:20px"><h1 style="font-size:22px;font-weight:800;color:var(--ink);margin-bottom:3px">Clients</h1><p style="font-size:13px;color:var(--muted)">Manage and search your full client roster</p></div>
+    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      ${summaryCard("Total Clients",total,"var(--ink)")}
+      ${summaryCard("Active",activeN,"var(--success)")}
+      ${summaryCard("Pending",pendingN,"var(--warning)")}
+      ${summaryCard("Closing This Week",closingWeek,"var(--teal)")}
+    </div>
+    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+      <div style="flex:1;min-width:220px;display:flex;align-items:center;gap:8px;background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:10px 14px">
+        <span style="color:var(--muted);font-size:14px">🔍</span>
+        <input id="clients-search-input" placeholder="Search by name, email, or business…" value="${CLIENTS_SEARCH.replace(/"/g,"&quot;")}" style="border:none;outline:none;background:transparent;font-size:13px;color:var(--ink);width:100%"/>
+      </div>
+      <select class="finput" style="width:auto;padding:10px 12px;font-size:13px;font-weight:600" onchange="setClientsFilter(this.value)">
+        <option value="all" ${CLIENTS_STATUS_FILTER==="all"?"selected":""}>All Statuses</option>
+        ${FILE_STATUSES.map(s=>`<option value="${s}" ${CLIENTS_STATUS_FILTER===s?"selected":""}>${s}</option>`).join("")}
+      </select>
+      <select class="finput" style="width:auto;padding:10px 12px;font-size:13px;font-weight:600" onchange="setClientsSort(this.value)">
+        <option value="recent" ${CLIENTS_SORT==="recent"?"selected":""}>Newest First</option>
+        <option value="name" ${CLIENTS_SORT==="name"?"selected":""}>Name A–Z</option>
+        <option value="closing" ${CLIENTS_SORT==="closing"?"selected":""}>Next Closing</option>
+      </select>
+    </div>
+    ${rows.length===0
+      ?`<div class="admin-card" style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">${q||CLIENTS_STATUS_FILTER!=="all"?"🔍":"⊚"}</p><p style="font-weight:600">${total===0?"No clients yet. Generate an invite code to get started.":"No clients match your search or filter."}</p></div>`
+      :`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">${rows.map(card).join("")}</div>`}`;
   }
 
   else if(tab==="tasks-all"){
@@ -3740,10 +3856,11 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <div style="width:36px;height:36px;border-radius:10px;background:${adminBellBg};border:1.5px solid ${adminBellBorder};display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='${adminBellBg}'">🔔</div>
     ${adminBellBadge}
   </div>`;
-  const GLOBAL_TABS=["overview","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+  const GLOBAL_TABS=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
   const isGlobalTab=GLOBAL_TABS.includes(tab)||tab==="overview";
   const adminNavItems=[
     {id:"overview",icon:"⊞",label:"Dashboard",section:"main"},
+    {id:"clients",icon:"⊚",label:"Clients",section:"main"},
     {id:"deals",icon:"⬡",label:"Deals",section:"main"},
     {id:"tasks-all",icon:"✓",label:"Tasks",section:"main",badge:null},
     {id:"requests",icon:"⬆",label:"Client Requests",section:"main",badge:null},
@@ -4247,9 +4364,29 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   }
   // Initialize bulk selection for deals, clients, etc.
   if(tab==="deals")initBulkSelection("deals");
+  // Clients page handlers
+  if(tab==="clients"){
+    const searchInput=qs("#clients-search-input");
+    if(searchInput){
+      // Live filter without full re-render (keeps focus); re-render only the grid
+      searchInput.addEventListener("input",e=>{
+        CLIENTS_SEARCH=e.target.value;
+        const q=CLIENTS_SEARCH.trim().toLowerCase();
+        qsa(".client-card").forEach(card=>{
+          const cid=card.dataset.cid;
+          const c=allClients.find(x=>x.id===cid);
+          const match=!q||[c?.name,c?.email,c?.business_name].filter(Boolean).some(v=>String(v).toLowerCase().includes(q));
+          card.style.display=match?"":"none";
+        });
+      });
+    }
+    qsa(".open-client-btn").forEach(btn=>btn.addEventListener("click",e=>{e.stopPropagation();renderAdmin(btn.dataset.cid,null,"client");}));
+    qsa(".viewas-client-btn").forEach(btn=>btn.addEventListener("click",e=>{e.stopPropagation();enterViewAsClient(btn.dataset.cid,btn.dataset.cname);}));
+    qsa(".client-card").forEach(card=>card.addEventListener("click",()=>renderAdmin(card.dataset.cid,null,"client")));
+  }
   qsa("[data-nav]").forEach(btn=>btn.addEventListener("click",()=>{
     const t=btn.dataset.nav;
-    const globalTabs=["overview","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+    const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
     if(globalTabs.includes(t))renderAdmin(null,null,t);
     else renderAdmin(null,null,"overview");
   }));
@@ -4442,7 +4579,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           await sb.from("notifications").update({is_read:true}).eq("id",nid);
           panel.remove();
           // Global tabs go straight there; client tabs need cid
-          const globalTabs=["overview","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+          const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
           if(globalTabs.includes(dest)){
             renderAdmin(null,null,dest);
           }else if(cid){
