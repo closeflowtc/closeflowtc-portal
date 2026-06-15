@@ -483,37 +483,46 @@ function renderTourOverlay(step,total,renderFn){
   document.getElementById("tour-tooltip")?.remove();
   const s=TOUR_STEPS[step];
 
-  // Dim backdrop
-  const backdrop=document.createElement("div");
-  backdrop.id="tour-overlay";
-  backdrop.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;pointer-events:none";
-
   // Spotlight the highlighted nav button
   const navBtns=document.querySelectorAll(".client-nav-btn");
   const activeBtn=Array.from(navBtns).find(b=>b.dataset.tab===s.tab);
-  let tooltipTop="50%",tooltipLeft="50%",tooltipTransform="translate(-50%,-50%)";
-  if(activeBtn){
+
+  // Backdrop container (no dim of its own — dimming is done by 4 rects so the highlighted item shows through clean)
+  const backdrop=document.createElement("div");
+  backdrop.id="tour-overlay";
+  backdrop.style.cssText="position:fixed;inset:0;z-index:2000;pointer-events:none";
+
+  const DIM="rgba(0,0,0,.5)";
+  const isMobile=window.innerWidth<=768;
+
+  if(activeBtn&&!isMobile){
     const r=activeBtn.getBoundingClientRect();
-    const hl=document.createElement("div");
-    hl.style.cssText=`position:fixed;top:${r.top-6}px;left:${r.left-8}px;width:${r.width+16}px;height:${r.height+12}px;border-radius:14px;box-shadow:0 0 0 4px var(--teal),0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;z-index:2001`;
-    backdrop.appendChild(hl);
-    // Position tooltip to the RIGHT of the sidebar so it doesn't cover content
-    const sidebarWidth=240;
-    const tooltipHeight=460; // approximate
-    const rawTop=Math.max(20,r.top);
-    const clampedTop=Math.min(rawTop, window.innerHeight - tooltipHeight - 20);
-    tooltipTop=`${clampedTop}px`;
-    tooltipLeft=`${sidebarWidth+24}px`;
-    tooltipTransform="none";
+    const pad=6;
+    const top=r.top-pad, left=r.left-pad, w=r.width+pad*2, h=r.height+pad*2;
+    // Four dim panels around the highlighted item — a true cutout, single 50% layer everywhere
+    const mk=(css)=>{const d=document.createElement("div");d.style.cssText=`position:fixed;background:${DIM};z-index:2000;pointer-events:auto;${css}`;return d;};
+    backdrop.appendChild(mk(`top:0;left:0;right:0;height:${Math.max(0,top)}px`));                       // above
+    backdrop.appendChild(mk(`top:${top+h}px;left:0;right:0;bottom:0`));                                   // below
+    backdrop.appendChild(mk(`top:${top}px;left:0;width:${Math.max(0,left)}px;height:${h}px`));            // left
+    backdrop.appendChild(mk(`top:${top}px;left:${left+w}px;right:0;height:${h}px`));                      // right
+    // Teal ring around the highlighted item (no big shadow — the rects do the dimming)
+    const ring=document.createElement("div");
+    ring.style.cssText=`position:fixed;top:${top}px;left:${left}px;width:${w}px;height:${h}px;border-radius:12px;box-shadow:0 0 0 3px var(--teal);pointer-events:none;z-index:2001`;
+    backdrop.appendChild(ring);
+  }else{
+    // Mobile (or no target): single full dim, tooltip centered
+    const full=document.createElement("div");
+    full.style.cssText=`position:fixed;inset:0;background:${DIM};z-index:2000;pointer-events:auto`;
+    backdrop.appendChild(full);
   }
   document.body.appendChild(backdrop);
 
-  // Tooltip card — anchored beside the highlighted item
+  // Tooltip card — positioned after measuring its real height (no hardcoded guess)
   const tooltip=document.createElement("div");
   tooltip.id="tour-tooltip";
-  tooltip.style.cssText=`position:fixed;top:${tooltipTop};left:${tooltipLeft};transform:${tooltipTransform};z-index:2002;pointer-events:all;width:100%;max-width:480px;padding:0 16px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)`;
+  tooltip.style.cssText=`position:fixed;z-index:2002;pointer-events:all;width:100%;max-width:420px;padding:0 16px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1);visibility:hidden`;
   tooltip.innerHTML=`
-  <div style="background:var(--white);border-radius:24px;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:hidden">
+  <div style="background:var(--white);border-radius:24px;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:hidden auto;max-height:calc(100vh - 32px)">
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#1C2B32,#2D4A5A,#3A9DB5);padding:22px 24px 18px;display:flex;align-items:center;gap:14px">
       <div style="width:50px;height:50px;border-radius:14px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">${s.icon}</div>
@@ -552,6 +561,31 @@ function renderTourOverlay(step,total,renderFn){
     </div>
   </div>`;
   document.body.appendChild(tooltip);
+
+  // Position the tooltip using its REAL measured size (fixes overflow / cut-off at 100% zoom)
+  requestAnimationFrame(()=>{
+    const tipH=tooltip.offsetHeight;
+    const tipW=tooltip.offsetWidth;
+    if(activeBtn&&!isMobile){
+      const r=activeBtn.getBoundingClientRect();
+      const sidebarRight=Math.max(r.right, document.querySelector(".sidebar")?.getBoundingClientRect().right||220);
+      // Sit just right of the sidebar, vertically centered on the highlighted item, clamped to viewport
+      let top=r.top+r.height/2-tipH/2;
+      top=Math.max(16, Math.min(top, window.innerHeight-tipH-16));
+      let left=sidebarRight+20;
+      // If it would run off the right edge, pull it back
+      if(left+tipW>window.innerWidth-16)left=Math.max(16, window.innerWidth-tipW-16);
+      tooltip.style.top=`${top}px`;
+      tooltip.style.left=`${left}px`;
+      tooltip.style.transform="none";
+    }else{
+      // Centered (mobile or no target)
+      tooltip.style.top="50%";
+      tooltip.style.left="50%";
+      tooltip.style.transform="translate(-50%,-50%)";
+    }
+    tooltip.style.visibility="visible";
+  });
 
   function cleanUp(){
     document.getElementById("tour-overlay")?.remove();
@@ -1425,7 +1459,7 @@ function showOnboardingModal(clientId,onComplete){
       <div id="ob-progress" style="height:100%;background:var(--teal);transition:width .4s ease;width:0%"></div>
     </div>
     <!-- Steps container -->
-    <div style="padding:28px 32px 8px;overflow-y:auto;flex:1">
+    <div style="padding:28px 32px 8px;overflow-y:auto;flex:1 1 auto;min-height:0">
 
       <!-- Step 1: Business Info -->
       <div id="ob-step-1" class="ob-step">
@@ -4256,13 +4290,19 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         await notifyClient(client.email,client.name,"📅 Closing Date Updated",`Your closing date has been updated to ${fmtDate(closing_date)}.`,address);
         await notifyAdmins(client.name,"📅 Closing Date Updated",`Closing date changed to ${fmtDate(closing_date)} for ${client.name} — ${address||"TBD"}`);
         await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"updated the closing date",details:`New date: ${fmtDate(closing_date)}`});
-        // Sync to key_dates table
+      }
+      // Sync to key_dates on EVERY save with a date — guarantees the client sees it as a key date,
+      // and backfills deals whose date was set before this sync existed.
+      if(closing_date){
         const{data:existingDate}=await sb.from("key_dates").select("*").eq("file_id",activeFileId).eq("label","Target Closing Date").maybeSingle();
         if(existingDate){
-          await sb.from("key_dates").update({date:closing_date}).eq("id",existingDate.id);
+          if(existingDate.date!==closing_date)await sb.from("key_dates").update({date:closing_date}).eq("id",existingDate.id);
         }else{
           await sb.from("key_dates").insert({client_id:activeClientId,file_id:activeFileId,label:"Target Closing Date",date:closing_date});
         }
+      }else{
+        // Date cleared — remove the synced key date if present
+        await sb.from("key_dates").delete().eq("file_id",activeFileId).eq("label","Target Closing Date");
       }
       if(status!==prev.status){
         const msg2=`Your file status has been updated to "${status}" — ${address||"your property"}`;
