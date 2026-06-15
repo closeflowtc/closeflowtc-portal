@@ -414,6 +414,7 @@ let CAL_OFFSET=0,DEALS_STAGE_FILTER="active";
 function calNav(d){CAL_OFFSET+=d;renderAdmin(null,null,"calendar");}
 function calToday(){CAL_OFFSET=0;renderAdmin(null,null,"calendar");}
 function setDealsFilter(v){DEALS_STAGE_FILTER=v;renderAdmin(null,null,"deals");}
+function openDealsFiltered(v){DEALS_STAGE_FILTER=v;renderAdmin(null,null,"deals");}
 let _notifPoll=null;
 let _allClients=[],_allFiles=[];
 
@@ -2764,13 +2765,13 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <!-- 6 stat cards -->
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:24px">
       ${[
-        {label:"Active Deals",val:allFiles.length,icon:"📁",bg:"#EBF8FF",tc:"#3182CE",dest:"deals"},
-        {label:"In Escrow",val:inEscrow,icon:"🤝",bg:"#F0FFF4",tc:"#38A169",dest:"deals"},
+        {label:"Active Deals",val:allFiles.length,icon:"📁",bg:"#EBF8FF",tc:"#3182CE",dest:"deals",filter:"active"},
+        {label:"In Escrow",val:inEscrow,icon:"🤝",bg:"#F0FFF4",tc:"#38A169",dest:"deals",filter:"escrow"},
         {label:"Closing This Week",val:closingThisWeek,icon:"📅",bg:"#FFFDE7",tc:"#D69E2E",dest:"calendar"},
-        {label:"Needs Attention",val:needsAttention,icon:"⚠️",bg:"#FFFAF0",tc:"#DD6B20",dest:"deals"},
+        {label:"Needs Attention",val:needsAttention,icon:"⚠️",bg:"#FFFAF0",tc:"#DD6B20",dest:"deals",filter:"attention"},
         {label:"Tasks Due Today",val:tasksDueToday,icon:"✅",bg:"#FAF5FF",tc:"#805AD5",dest:"tasks-all"},
         {label:"Pending Requests",val:pendingRequests,icon:"📨",bg:"#FFF5F5",tc:"#E53E3E",dest:"requests"},
-      ].map(s=>`<div class="admin-stat" onclick="renderAdmin(null,null,'${s.dest}')" style="cursor:pointer" title="View ${s.label}">
+      ].map(s=>`<div class="admin-stat" onclick="${s.filter?`openDealsFiltered('${s.filter}')`:`renderAdmin(null,null,'${s.dest}')`}" style="cursor:pointer" title="View ${s.label}">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
           <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;line-height:1.4">${s.label}</p>
           <div style="width:36px;height:36px;border-radius:10px;background:${s.bg};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${s.icon}</div>
@@ -2936,18 +2937,23 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
 
   else if(tab==="deals"){
+    const ESCROW_STAGES=["Escrow Opened","EMD Pending","EMD Paid","Title Commitment","HUD/ALTA Review"];
     const stageFiltered=allFiles.filter(d=>{
       if(DEALS_STAGE_FILTER==="active")return d.deal_stage!=="Archived";
       if(DEALS_STAGE_FILTER==="all")return true;
+      if(DEALS_STAGE_FILTER==="escrow")return ESCROW_STAGES.includes(d.deal_stage||"");
+      if(DEALS_STAGE_FILTER==="attention")return !!d.needs_attention;
       return(d.deal_stage||"Deal Initiation")===DEALS_STAGE_FILTER;
     });
     const archivedCount=allFiles.filter(d=>d.deal_stage==="Archived").length;
     mainContent=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-      <div><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Deals</h1><p style="font-size:13px;color:var(--muted)">${stageFiltered.length} deal${stageFiltered.length===1?"":"s"} shown${DEALS_STAGE_FILTER==="active"&&archivedCount>0?` · ${archivedCount} archived`:""} — click any deal to open</p></div>
+      <div><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Deals</h1><p style="font-size:13px;color:var(--muted)">${DEALS_STAGE_FILTER==="escrow"?`Showing deals in escrow · `:DEALS_STAGE_FILTER==="attention"?`Showing deals that need attention · `:""}${stageFiltered.length} deal${stageFiltered.length===1?"":"s"} shown${DEALS_STAGE_FILTER==="active"&&archivedCount>0?` · ${archivedCount} archived`:""} — click any deal to open</p></div>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <select class="finput" style="width:auto;padding:8px 12px;font-size:12px;font-weight:600" onchange="setDealsFilter(this.value)">
           <option value="active" ${DEALS_STAGE_FILTER==="active"?"selected":""}>All Active</option>
+          <option value="escrow" ${DEALS_STAGE_FILTER==="escrow"?"selected":""}>In Escrow (grouped)</option>
+          <option value="attention" ${DEALS_STAGE_FILTER==="attention"?"selected":""}>⚠️ Needs Attention</option>
           ${DEAL_STAGES.map(s=>`<option value="${s}" ${DEALS_STAGE_FILTER===s?"selected":""}>${s}${s==="Archived"&&archivedCount>0?` (${archivedCount})`:""}</option>`).join("")}
           <option value="all" ${DEALS_STAGE_FILTER==="all"?"selected":""}>All Deals (incl. archived)</option>
         </select>
@@ -3534,6 +3540,15 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <div class="input-group"><label class="input-label">Status</label><select class="dark-input" id="f-status">${FILE_STATUSES.map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
         <div class="input-group"><label class="input-label">Milestone</label><select class="dark-input" id="f-milestone">${MILESTONES.map((m,i)=>`<option value="${i}" ${f.milestone===i?"selected":""}>${i+1}. ${m}</option>`).join("")}</select></div>
         <div class="input-group" style="grid-column:1/-1"><label class="input-label">Coordinator</label><div id="coord-dropdown-wrap"><select class="dark-input" id="f-coord"><option value="${f.coordinator||"Danielle McCarter"}">${f.coordinator||"Danielle McCarter"}</option></select></div></div>
+        <div class="input-group" style="grid-column:1/-1">
+          <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;border:1.5px solid ${f.needs_attention?"#FBD38D":"var(--border)"};background:${f.needs_attention?"#FFFAF0":"var(--main-bg)"};cursor:pointer;transition:all .2s">
+            <input type="checkbox" id="f-attention" ${f.needs_attention?"checked":""} style="width:18px;height:18px;accent-color:#DD6B20;cursor:pointer"/>
+            <div>
+              <p style="font-size:13px;font-weight:700;color:var(--ink)">⚠️ Flag this deal as "Needs Attention"</p>
+              <p style="font-size:11px;color:var(--muted)">Flagged deals show up in the dashboard "Needs Attention" card and filter.</p>
+            </div>
+          </label>
+        </div>
       </div>
       <div style="display:flex;gap:10px;margin-top:18px;align-items:center">
         <button class="btn btn-primary" id="save-file">Save Changes</button>
@@ -4418,8 +4433,13 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const status=qs("#f-status")?.value||"Pending";
     const milestone=parseInt(qs("#f-milestone")?.value||0);
     const coordinator=qs("#f-coord")?.value||"Danielle McCarter";
+    const needs_attention=qs("#f-attention")?.checked||false;
     const prev=file;
-    await sb.from("files").update({address,closing_date,status,milestone,coordinator}).eq("id",activeFileId);
+    const{error:saveErr}=await sb.from("files").update({address,closing_date,status,milestone,coordinator,needs_attention}).eq("id",activeFileId);
+    if(saveErr){
+      // Fallback: column may not exist yet — save the rest so nothing is lost
+      await sb.from("files").update({address,closing_date,status,milestone,coordinator}).eq("id",activeFileId);
+    }
     if(client&&prev){
       if(closing_date&&closing_date!==prev.closing_date){
         const msg2=`Your closing date has been updated to ${fmtDate(closing_date)} — ${address||"your property"}`;
