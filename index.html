@@ -179,10 +179,15 @@ input,select,textarea{font-family:inherit}
 
 /* ── MOBILE RESPONSIVENESS ── */
 @media(max-width:768px){
-  /* Sidebar collapses */
-  .sidebar{width:100%;height:auto;position:relative;flex-direction:row;flex-wrap:wrap;padding:10px;border-right:none;border-bottom:1px solid var(--border)}
+  /* Client sidebar becomes a slide-in drawer (matches admin) */
+  .sidebar{position:fixed!important;top:0;left:0;width:82%!important;max-width:300px!important;height:100vh!important;z-index:1200;flex-direction:column!important;transform:translateX(-105%);transition:transform .28s ease;box-shadow:4px 0 24px rgba(0,0,0,.3);border-right:1px solid var(--border)}
+  .sidebar.mobile-open{transform:translateX(0)}
+  .client-hamburger{display:flex!important}
   .main-area{margin-left:0}
   .portal-wrap{flex-direction:column}
+  #client-sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1100;display:none}
+  /* Keep the profile dropdown fully on-screen on mobile (fixed to viewport top-right) */
+  .user-dropdown{position:fixed!important;top:110px!important;right:10px!important;left:auto!important;min-width:180px!important;width:auto!important;max-width:calc(100vw - 20px)!important;box-shadow:0 12px 32px rgba(0,0,0,.22)!important}
   /* Topbar */
   .topbar{padding:0 14px;height:auto;flex-wrap:wrap;gap:8px;padding-top:10px;padding-bottom:10px}
   /* Content padding */
@@ -464,6 +469,21 @@ function toggleAdminSidebar(){
       ov=document.createElement("div");
       ov.id="admin-sidebar-overlay";
       ov.onclick=toggleAdminSidebar;
+      document.body.appendChild(ov);
+    }
+    ov.style.display="block";
+  }else if(ov){ov.style.display="none";}
+}
+function toggleClientSidebar(){
+  const sb2=document.querySelector(".sidebar");
+  if(!sb2)return;
+  const open=sb2.classList.toggle("mobile-open");
+  let ov=document.getElementById("client-sidebar-overlay");
+  if(open){
+    if(!ov){
+      ov=document.createElement("div");
+      ov.id="client-sidebar-overlay";
+      ov.onclick=toggleClientSidebar;
       document.body.appendChild(ov);
     }
     ov.style.display="block";
@@ -1887,6 +1907,7 @@ async function doRegister(){
 
 // ── CLIENT DASHBOARD ──────────────────────────────────────────────────────────
 async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isTourStep=false){
+  document.getElementById("client-sidebar-overlay")?.remove();
   // Load all files for this client
   const{data:allFiles}=await sb.from("files").select("*").eq("client_id",clientId).order("created_at");
   const files=allFiles||[];
@@ -2451,6 +2472,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
         <button onclick="exitViewAsClient()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer">← Exit to Admin</button>
       </div>`:""}
       <div class="topbar" style="background:var(--sidebar-active);border-bottom:1px solid rgba(255,255,255,.08);padding:0 24px">
+        <button class="client-hamburger" onclick="toggleClientSidebar()" aria-label="Menu" style="display:none;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;width:40px;height:40px;border-radius:10px;font-size:20px;cursor:pointer;flex-shrink:0;align-items:center;justify-content:center;margin-right:4px">☰</button>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <img src="https://assets.cdn.filesafe.space/EugpQeU0mFvhfus3Pw1y/media/69379341e03e9d121662162b.png" style="height:32px;width:auto;filter:brightness(10)" alt="CloseFlow TC"/>
         </div>
