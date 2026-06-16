@@ -189,7 +189,9 @@ input,select,textarea{font-family:inherit}
   /* Keep the profile dropdown fully on-screen on mobile (fixed to viewport top-right) */
   .user-dropdown{position:fixed!important;top:110px!important;right:10px!important;left:auto!important;min-width:180px!important;width:auto!important;max-width:calc(100vw - 20px)!important;box-shadow:0 12px 32px rgba(0,0,0,.22)!important}
   /* Topbar */
-  .topbar{padding:0 14px;height:auto;flex-wrap:wrap;gap:8px;padding-top:10px;padding-bottom:10px}
+  .topbar{padding:10px 14px!important;height:auto;flex-wrap:wrap;gap:8px;width:100%!important;box-sizing:border-box!important}
+  /* Property selector takes a full row on mobile so the bar never overflows */
+  .topbar > div[style*="max-width:360px"]{max-width:none!important;flex:1 1 100%!important;margin:0!important}
   /* Content padding */
   .content{padding:14px}
   /* Cards */
