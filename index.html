@@ -192,6 +192,11 @@ input,select,textarea{font-family:inherit}
   .topbar{padding:10px 14px!important;height:auto;flex-wrap:wrap;gap:8px;width:100%!important;box-sizing:border-box!important}
   /* Property selector takes a full row on mobile so the bar never overflows */
   .topbar > div[style*="max-width:360px"]{max-width:none!important;flex:1 1 100%!important;margin:0!important}
+  /* Overview timeline: its 7 steps (min-width:72px each ≈ 500px) were forcing the
+     whole page wider than the screen, which made the sticky top bar stop short.
+     Constrain the scroll row to the viewport so it scrolls INSIDE the card instead. */
+  .content div[style*="overflow-x:auto"]{max-width:100%!important}
+  .content .card{max-width:100%}
   /* Content padding */
   .content{padding:14px}
   /* Cards */
