@@ -2006,6 +2006,29 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     const milestoneTimeline=MILESTONES.map((m,i)=>({m,i,done:i<f.milestone,curr:i===f.milestone}));
 
     content=`
+    <!-- PERSONAL GREETING + PROGRESS -->
+    ${(()=>{
+      const hr=new Date().getHours();
+      const partOfDay=hr<12?"Good morning":hr<18?"Good afternoon":"Good evening";
+      const firstName=(client?.name||"").trim().split(" ")[0]||"there";
+      const stageLabel=MILESTONES[f.milestone]||"Getting started";
+      return `<div class="card card-pad" style="margin-bottom:16px;background:linear-gradient(135deg,var(--teal-mist),var(--white))">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          <div>
+            <p style="font-size:18px;font-weight:800;color:var(--ink);line-height:1.2">${partOfDay}, ${firstName} 👋</p>
+            <p style="font-size:13px;color:var(--muted);margin-top:2px">Here's where your closing stands today.</p>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <p style="font-size:26px;font-weight:900;color:var(--teal);line-height:1">${pct}%</p>
+            <p style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">to closing</p>
+          </div>
+        </div>
+        <div style="height:10px;background:var(--border);border-radius:50px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-light));border-radius:50px;transition:width .6s ease"></div>
+        </div>
+        <p style="font-size:12px;color:var(--ink);font-weight:600;margin-top:8px">Current step: <span style="color:var(--teal)">${stageLabel}</span></p>
+      </div>`;
+    })()}
     <!-- 3-COLUMN DASHBOARD LAYOUT -->
     <div style="display:grid;grid-template-columns:200px 1fr 220px;gap:16px;align-items:start">
 
@@ -2026,7 +2049,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
         <div class="card card-pad">
           <p style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">Key Dates</p>
           ${dl.length===0
-            ?`<p style="font-size:12px;color:var(--muted)">No dates added yet.</p>`
+            ?`<p style="font-size:12px;color:var(--muted)">No key dates yet — your CloseFlow team will add them as your closing moves forward.</p>`
             :dl.map((d,i)=>{
               const days=daysUntil(d.date);
               const done=days!==null&&days<0;
@@ -2115,7 +2138,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
               <p style="font-size:12px;font-weight:600;color:var(--ink)">01_Business_&_Entity_Docs</p>
             </div>
             <div style="padding-left:20px">
-              ${(()=>{const bd=clientDocs.filter(d=>d.category==="Business Documents"||d.category==="ID / Verification");return bd.length>0?bd.map(d=>'<a href="javascript:void(0)" onclick="openDoc(\''+(d.url||"").replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:6px;padding:4px 0;text-decoration:none"><span style="font-size:11px">&#128196;</span><p style="font-size:11px;color:var(--teal);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</p></a>').join(''):'<p style="font-size:11px;color:var(--muted);padding:4px 0">No documents yet</p>';})()}
+              ${(()=>{const bd=clientDocs.filter(d=>d.category==="Business Documents"||d.category==="ID / Verification");return bd.length>0?bd.map(d=>'<a href="javascript:void(0)" onclick="openDoc(\''+(d.url||"").replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:6px;padding:4px 0;text-decoration:none"><span style="font-size:11px">&#128196;</span><p style="font-size:11px;color:var(--teal);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</p></a>').join(''):'<p style="font-size:11px;color:var(--muted);padding:4px 0">Nothing here yet — your team will add documents as needed.</p>';})()}
             </div>
           </div>
           <!-- Property Files -->
@@ -2384,7 +2407,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
         </div>
         <div id="cdoc-msg" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;border-radius:8px"></div>
       </div>
-      ${tcDocs.length===0&&clientDocs.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📂</p><p style="font-weight:600">No documents yet. Check back soon.</p></div>`:""}
+      ${tcDocs.length===0&&clientDocs.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📂</p><p style="font-weight:600">No documents here yet — your CloseFlow team will add them as your closing progresses.</p></div>`:""}
       ${tcDocs.length>0?`<p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">From Your Coordinator</p>${cats.map(cat=>`<p style="font-size:11px;font-weight:600;color:var(--muted);margin:10px 0 6px;padding-left:4px">${cat}</p>${tcDocs.filter(d=>(d.category||"General")===cat).map(doc=>docRow(doc,false)).join("")}`).join("")}`:""}
       ${clientDocs.length>0?`<p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px">My Uploads</p>${clientDocs.map(doc=>docRow(doc,true)).join("")}`:""}
     </div>`;
