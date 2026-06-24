@@ -466,6 +466,43 @@ function calNav(d){CAL_OFFSET+=d;renderAdmin(null,null,"calendar");}
 function calToday(){CAL_OFFSET=0;renderAdmin(null,null,"calendar");}
 function setDealsFilter(v){DEALS_STAGE_FILTER=v;renderAdmin(null,null,"deals");}
 function openDealsFiltered(v){DEALS_STAGE_FILTER=v;renderAdmin(null,null,"deals");}
+function adminClientSearch(q){
+  const box=document.getElementById("admin-search-results");
+  if(!box)return;
+  const query=(q||"").trim().toLowerCase();
+  if(!query){box.style.display="none";box.innerHTML="";return;}
+  const list=(typeof _allClients!=="undefined"&&_allClients)?_allClients:[];
+  const matches=list.filter(c=>[c.name,c.email,c.business_name].filter(Boolean).some(v=>String(v).toLowerCase().includes(query))).slice(0,8);
+  if(matches.length===0){
+    box.innerHTML=`<div style="padding:14px 16px;font-size:13px;color:var(--muted)">No clients match "${q.replace(/</g,"&lt;")}"</div>`;
+    box.style.display="block";return;
+  }
+  box.innerHTML=matches.map(c=>{
+    const sc=STATUS[c.status||"Pending"]||{bg:"#EDF2F7",text:"#4A5568"};
+    return `<div onclick="adminOpenSearchedClient('${c.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--main-bg)'" onmouseout="this.style.background='transparent'">
+      ${avatarEl(c.name,c.photo_url||"",32)}
+      <div style="flex:1;min-width:0">
+        <p style="font-size:13px;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name||"Unnamed"}</p>
+        <p style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.business_name||c.email||""}</p>
+      </div>
+      <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${sc.bg};color:${sc.text};flex-shrink:0">${c.status||"Pending"}</span>
+    </div>`;
+  }).join("");
+  box.style.display="block";
+}
+function adminOpenSearchedClient(cid){
+  const box=document.getElementById("admin-search-results");
+  if(box){box.style.display="none";box.innerHTML="";}
+  const inp=document.getElementById("admin-client-search");
+  if(inp)inp.value="";
+  renderAdmin(cid,null,"client");
+}
+// Close the search dropdown when clicking outside it
+document.addEventListener("click",e=>{
+  const box=document.getElementById("admin-search-results");
+  const inp=document.getElementById("admin-client-search");
+  if(box&&inp&&!box.contains(e.target)&&e.target!==inp){box.style.display="none";}
+});
 // Open a document: storage-backed files get a fresh signed URL (private bucket);
 // plain links (e.g. Google Drive) open directly.
 async function openDoc(urlOrPath){
@@ -4032,9 +4069,6 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <div style="height:1px;background:rgba(255,255,255,.06);margin:10px 0"></div>
         <span class="admin-nav-label">Tools</span>
         ${adminNavItems.filter(n=>n.section==="tools").map(n=>`<button data-nav="${n.id}" class="admin-nav-item ${tab===n.id?"active":""}"><span style="font-size:13px;width:18px;text-align:center;flex-shrink:0">${n.icon}</span>${n.label}</button>`).join("")}
-        <div style="height:1px;background:rgba(255,255,255,.06);margin:10px 0"></div>
-        <span class="admin-nav-label">Clients (${allClients.length})</span>
-        ${allClients.map(c=>{const sc=STATUS[c.status||"Pending"]||{dot:"#aaa"};const isActive=c.id===activeClientId&&!GLOBAL_TABS.includes(tab);return`<button class="sidebar-client-btn admin-nav-item ${isActive?"active":""}" data-cid="${c.id}" style="border-left:${isActive?"2px solid var(--teal)":"2px solid transparent"};padding-left:${isActive?"10px":"12px"}"><div style="width:7px;height:7px;border-radius:50%;background:${sc.dot};flex-shrink:0;margin-right:2px"></div><div style="min-width:0;flex:1"><p style="font-size:12px;color:${isActive?"#fff":"rgba(255,255,255,.6)"};font-weight:${isActive?700:400};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</p><p style="font-size:10px;color:rgba(255,255,255,.25);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.status||"Pending"}</p></div></button>`;}).join("")}
       </div>
       <div style="padding:12px 14px;border-top:1px solid rgba(255,255,255,.07)">
         <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.05);border-radius:10px;border:1px solid rgba(255,255,255,.08)">
@@ -4051,9 +4085,12 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       <div class="admin-topbar" style="background:var(--sidebar-active);border-bottom:1px solid rgba(255,255,255,.08)">
         <button class="admin-hamburger" onclick="toggleAdminSidebar()" aria-label="Menu" style="display:none;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;width:40px;height:40px;border-radius:10px;font-size:20px;cursor:pointer;flex-shrink:0;align-items:center;justify-content:center">☰</button>
         <div style="display:flex;align-items:center;gap:14px">
-          <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 14px;min-width:220px">
-            <span style="color:rgba(255,255,255,.4);font-size:13px">🔍</span>
-            <input placeholder="Search clients..." style="border:none;outline:none;background:transparent;font-size:13px;color:#fff;width:100%" onkeyup="const v=this.value.toLowerCase();document.querySelectorAll('.client-row[data-cid]').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(v)?'flex':'none'});document.querySelectorAll('.sidebar-client-btn[data-cid]').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(v)?'flex':'none'})"/>
+          <div style="position:relative;min-width:220px">
+            <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 14px;min-width:220px">
+              <span style="color:rgba(255,255,255,.4);font-size:13px">🔍</span>
+              <input id="admin-client-search" autocomplete="off" placeholder="Search clients..." style="border:none;outline:none;background:transparent;font-size:13px;color:#fff;width:100%" oninput="adminClientSearch(this.value)" onfocus="adminClientSearch(this.value)"/>
+            </div>
+            <div id="admin-search-results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--white);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);max-height:320px;overflow-y:auto;z-index:300"></div>
           </div>
           <span style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:10px;font-weight:800;padding:4px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.15)">${isSuperAdmin?"⭐ SUPER ADMIN":"👤 ADMIN"}</span>
         </div>
@@ -4539,7 +4576,6 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     if(globalTabs.includes(t))renderAdmin(null,null,t);
     else renderAdmin(null,null,"overview");
   }));
-  qsa(".sidebar-client-btn[data-cid]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(btn.dataset.cid,null,"client")));
   qsa(".client-row[data-cid]").forEach(row=>row.addEventListener("click",()=>renderAdmin(row.dataset.cid,null,"client")));
   qsa(".deal-row[data-cid]").forEach(row=>row.addEventListener("click",()=>renderAdmin(row.dataset.cid,row.dataset.fid,"client")));
   qsa("[data-atab]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(activeClientId,activeFileId,btn.dataset.atab)));
