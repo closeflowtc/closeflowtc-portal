@@ -465,6 +465,20 @@ function calNav(d){CAL_OFFSET+=d;renderAdmin(null,null,"calendar");}
 function calToday(){CAL_OFFSET=0;renderAdmin(null,null,"calendar");}
 function setDealsFilter(v){DEALS_STAGE_FILTER=v;renderAdmin(null,null,"deals");}
 function openDealsFiltered(v){DEALS_STAGE_FILTER=v;renderAdmin(null,null,"deals");}
+// Open a document: storage-backed files get a fresh signed URL (private bucket);
+// plain links (e.g. Google Drive) open directly.
+async function openDoc(urlOrPath){
+  try{
+    if(urlOrPath&&urlOrPath.startsWith("storage:")){
+      const path=urlOrPath.slice(8);
+      const{data,error}=await sb.storage.from("portal-docs").createSignedUrl(path,3600);
+      if(error||!data?.signedUrl){alert("Sorry, this document couldn't be opened. Please contact your coordinator.");return;}
+      window.open(data.signedUrl,"_blank","noopener");
+    }else if(urlOrPath){
+      window.open(urlOrPath,"_blank","noopener");
+    }
+  }catch(e){alert("Sorry, this document couldn't be opened. Please contact your coordinator.");}
+}
 function toggleAdminSidebar(){
   const sb2=document.querySelector(".admin-sidebar");
   if(!sb2)return;
@@ -1119,7 +1133,9 @@ function showGlobalUploadDocModal(){
         statusEl.textContent=`Upload failed: ${uploadErr.message}`;btn.textContent="Upload Document";btn.disabled=false;return;
       }
       const{data:urlData}=sb.storage.from("portal-docs").getPublicUrl(path);
-      docUrl=urlData?.publicUrl||"";
+      // Store the storage PATH (prefixed) instead of a public URL, so the file
+      // stays private and we generate a fresh signed URL each time it's opened.
+      docUrl="storage:"+path;
     }else{
       docUrl=overlay.querySelector("#gdoc-drive-link")?.value.trim();
       if(!docUrl){
@@ -2086,7 +2102,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
               <p style="font-size:12px;font-weight:600;color:var(--ink)">01_Business_&_Entity_Docs</p>
             </div>
             <div style="padding-left:20px">
-              ${(()=>{const bd=clientDocs.filter(d=>d.category==="Business Documents"||d.category==="ID / Verification");return bd.length>0?bd.map(d=>'<a href="'+d.url+'" target="_blank" style="display:flex;align-items:center;gap:6px;padding:4px 0;text-decoration:none"><span style="font-size:11px">&#128196;</span><p style="font-size:11px;color:var(--teal);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</p></a>').join(''):'<p style="font-size:11px;color:var(--muted);padding:4px 0">No documents yet</p>';})()}
+              ${(()=>{const bd=clientDocs.filter(d=>d.category==="Business Documents"||d.category==="ID / Verification");return bd.length>0?bd.map(d=>'<a href="javascript:void(0)" onclick="openDoc(\''+(d.url||"").replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:6px;padding:4px 0;text-decoration:none"><span style="font-size:11px">&#128196;</span><p style="font-size:11px;color:var(--teal);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</p></a>').join(''):'<p style="font-size:11px;color:var(--muted);padding:4px 0">No documents yet</p>';})()}
             </div>
           </div>
           <!-- Property Files -->
@@ -2096,7 +2112,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
               <p style="font-size:12px;font-weight:600;color:var(--ink)">02_Property_Files</p>
             </div>
             <div style="padding-left:20px">
-              ${files.map(fi=>{const propDocs=tcDocs.filter(d=>d.file_id===fi.id).slice(0,2);return '<div style="margin-bottom:6px"><div style="display:flex;align-items:center;gap:6px;padding:3px 0"><span style="font-size:12px">&#128194;</span><p style="font-size:11px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(fi.address||"Property (address pending)")+'</p></div>'+propDocs.map(d=>'<a href="'+d.url+'" target="_blank" style="display:flex;align-items:center;gap:5px;padding:2px 0 2px 14px;text-decoration:none"><span style="font-size:10px">&#128196;</span><p style="font-size:11px;color:var(--teal);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</p></a>').join('')+'</div>';}).join("")}
+              ${files.map(fi=>{const propDocs=tcDocs.filter(d=>d.file_id===fi.id).slice(0,2);return '<div style="margin-bottom:6px"><div style="display:flex;align-items:center;gap:6px;padding:3px 0"><span style="font-size:12px">&#128194;</span><p style="font-size:11px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(fi.address||"Property (address pending)")+'</p></div>'+propDocs.map(d=>'<a href="javascript:void(0)" onclick="openDoc(\''+(d.url||"").replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:5px;padding:2px 0 2px 14px;text-decoration:none"><span style="font-size:10px">&#128196;</span><p style="font-size:11px;color:var(--teal);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</p></a>').join('')+'</div>';}).join("")}
             </div>
           </div>
           <button class="ov-nav-btn" data-navto="documents" style="background:none;border:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--teal);padding:0">View All Documents &rarr;</button>
@@ -2320,7 +2336,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     const clientDocs=dl.filter(d=>d.uploaded_by==="client");
     const cats=[...new Set(tcDocs.map(d=>d.category||"General"))];
     const docRow=(doc,isClient=false)=>`
-      <a href="${doc.url}" target="_blank" style="display:flex;align-items:center;gap:14px;background:var(--main-bg);border-radius:12px;padding:14px 16px;border:1px solid var(--border);text-decoration:none;margin-bottom:8px;transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow-hover)';this.style.borderColor='var(--teal-light)'" onmouseout="this.style.transform='none';this.style.boxShadow='none';this.style.borderColor='var(--border)'">
+      <a href="javascript:void(0)" onclick="openDoc('${(doc.url||"").replace(/'/g,"\\'")}')" style="display:flex;align-items:center;gap:14px;background:var(--main-bg);border-radius:12px;padding:14px 16px;border:1px solid var(--border);text-decoration:none;margin-bottom:8px;transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow-hover)';this.style.borderColor='var(--teal-light)'" onmouseout="this.style.transform='none';this.style.boxShadow='none';this.style.borderColor='var(--border)'">
         <div style="width:38px;height:38px;border-radius:10px;background:${isClient?"#FEFCBF":"var(--teal-mist)"};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📄</div>
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
@@ -2344,7 +2360,9 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
             <select class="finput" id="cdoc-cat"><option>Business Documents</option><option>ID / Verification</option><option>Financial</option><option>Contracts</option><option>Other</option></select>
           </div>
         </div>
-        <div class="input-group" style="margin-bottom:10px"><label class="input-label">Google Drive Link</label><input class="finput" id="cdoc-url" placeholder="Paste your Google Drive shareable link here"/></div>
+        <div class="input-group" style="margin-bottom:10px"><label class="input-label">Upload a File <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(PDF, Word, or image — max 20MB)</span></label><input type="file" class="finput" id="cdoc-file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic" style="padding:8px"/></div>
+        <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:10px">— or —</div>
+        <div class="input-group" style="margin-bottom:10px"><label class="input-label">Paste a Google Drive Link</label><input class="finput" id="cdoc-url" placeholder="Paste your Google Drive shareable link here"/></div>
         <div class="input-group" style="margin-bottom:12px"><label class="input-label">Description (optional)</label><input class="finput" id="cdoc-desc" placeholder="Brief description"/></div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-teal btn-sm" id="submit-cdoc">Submit Document</button>
@@ -2705,11 +2723,23 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   on("#cancel-upload","click",()=>{const f2=qs("#upload-form");if(f2)f2.style.display="none";const b=qs("#show-upload-form");if(b)b.style.display="block";});
   on("#submit-cdoc","click",async()=>{
     if(roBlock())return;
-    const name=qs("#cdoc-name")?.value.trim();const url=qs("#cdoc-url")?.value.trim();
+    const name=qs("#cdoc-name")?.value.trim();let url=qs("#cdoc-url")?.value.trim();
     const category=qs("#cdoc-cat")?.value||"Other";const description=qs("#cdoc-desc")?.value.trim()||"";
     const msg=qs("#cdoc-msg");
-    if(!name||!url){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Please fill in the document name and link.";}return;}
+    const fileInput=qs("#cdoc-file");const file=fileInput?.files?.[0];
+    const showErr=(txt)=>{if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent=txt;}};
+    if(!name){showErr("Please enter a document name.");return;}
+    if(!file&&!url){showErr("Please upload a file or paste a Google Drive link.");return;}
     btnLoad("submit-cdoc",true,"Submitting…");
+    // If a file was chosen, upload it to private storage and store the path (secure, signed on open)
+    if(file){
+      if(file.size>20*1024*1024){showErr("File is too large. Maximum size is 20MB.");btnLoad("submit-cdoc",false,"Submit Document");return;}
+      const ext=file.name.split(".").pop();
+      const path=`documents/${clientId}/${fileId}/${Date.now()}.${ext}`;
+      const{error:upErr}=await sb.storage.from("portal-docs").upload(path,file,{cacheControl:"3600",upsert:false});
+      if(upErr){showErr(`Upload failed: ${upErr.message}`);btnLoad("submit-cdoc",false,"Submit Document");return;}
+      url="storage:"+path;
+    }
     await sb.from("documents").insert({client_id:clientId,file_id:fileId,name,url,category,description,date:new Date().toISOString().slice(0,10),uploaded_by:"client"});
     await notifyAdmins(client.name,"📄 New Document Upload",`"${name}" | Category: ${category} | Property: ${f.address||"TBD"}`);
     if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Document submitted! Your coordinator has been notified.";}
@@ -3309,7 +3339,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           <p style="font-size:11px;color:var(--muted)">${(doc.clients||doc)?.name||""} · ${(doc.files||doc)?.address||""} · ${doc.category||"General"}</p>
         </div>
         <span style="font-size:10px;font-weight:700;background:${doc.uploaded_by==="client"?"var(--yellow-bg)":"var(--teal-mist)"};color:${doc.uploaded_by==="client"?"var(--yellow)":"var(--teal-dark)"};padding:3px 9px;border-radius:20px;border:1px solid ${doc.uploaded_by==="client"?"var(--yellow-border)":"var(--teal-light)"};flex-shrink:0">${doc.uploaded_by==="client"?"Client":"TC"}</span>
-        <a href="${doc.url}" target="_blank" class="btn btn-teal btn-sm" style="font-size:11px;flex-shrink:0">View ↗</a>
+        <a href="javascript:void(0)" onclick="openDoc('${(doc.url||"").replace(/'/g,"\\'")}')" class="btn btn-teal btn-sm" style="font-size:11px;flex-shrink:0">View ↗</a>
       </div>`).join("")}
     </div>`;
   }
@@ -3817,7 +3847,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
             <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${isClient?"#FEFCBF":"var(--teal-mist)"};color:${isClient?"#744210":"var(--teal-dark)"};white-space:nowrap">${isClient?"Client Upload":"TC"}</span>
             ${doc.category?`<span style="font-size:10px;color:var(--muted);background:var(--border);padding:2px 8px;border-radius:20px">${doc.category}</span>`:""}
           </div>
-          <a href="${doc.url}" target="_blank" style="font-size:11px;color:var(--teal);text-decoration:none">${doc.url.slice(0,55)}${doc.url.length>55?"...":""} ↗</a>
+          <a href="javascript:void(0)" onclick="openDoc('${(doc.url||"").replace(/'/g,"\\'")}')" style="font-size:11px;color:var(--teal);text-decoration:none">${doc.url&&doc.url.startsWith("storage:")?"📎 Uploaded file":doc.url.slice(0,55)+(doc.url.length>55?"...":"")} ↗</a>
         </div>
         <button data-docid="${doc.id}" class="del-doc btn btn-danger btn-sm" style="padding:4px 10px;flex-shrink:0">×</button>
       </div>`;
