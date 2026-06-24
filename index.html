@@ -1161,7 +1161,7 @@ function showGlobalUploadDocModal(preClientId="",preFileId=""){
     if(client)await createNotification(clientId,fileId,`New document available: "${name}"`, "info");
     await sb.from("activity_log").insert({file_id:fileId,admin_name:SESSION?.admin?.name||"Admin",action:"uploaded a document",details:name.slice(0,80)});
     overlay.remove();
-    renderAdmin(null,null,"documents-all");
+    renderAdmin(clientId,fileId,"client");
   });
 }
 
@@ -2840,8 +2840,8 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   _allClients=allClients; // sync to global for modal access
 
   // Determine active client
-  const isGlobalView=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"].includes(tab);
-  const GLOBAL_TABS_ARR=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+  const isGlobalView=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"].includes(tab);
+  const GLOBAL_TABS_ARR=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
   const activeClientId=selClientId||(allClients[0]?.id)||null;
   let clientFiles=[];
   if(activeClientId&&!isGlobalView){
@@ -3358,27 +3358,6 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           ${c.phone?`<a href="tel:${c.phone}" style="font-size:12px;color:var(--teal);font-weight:600">${c.phone}</a>`:""}
           ${c.email?`<a href="mailto:${c.email}" style="font-size:12px;color:var(--teal);font-weight:600">${c.email}</a>`:""}
         </div>
-      </div>`).join("")}
-    </div>`;
-  }
-
-  else if(tab==="documents-all"){
-    const allDocs2=(await sb.from("documents").select("*,clients(name),files(address)").order("created_at",{ascending:false})).data||[];
-    mainContent=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-      <div><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Documents</h1><p style="font-size:13px;color:var(--muted)">${allDocs2.length} total documents across all deals</p></div>
-      <button class="btn btn-primary btn-sm" onclick="showGlobalUploadDocModal()">+ Upload Document</button>
-    </div>
-    <div class="admin-card" style="margin-bottom:0">
-      ${allDocs2.length===0?`<div style="text-align:center;padding:48px;color:var(--muted)"><p style="font-size:40px;margin-bottom:12px">📁</p><p>No documents yet.</p></div>`
-      :allDocs2.map(doc=>`<div class="admin-row" style="cursor:default">
-        <div style="width:36px;height:36px;border-radius:9px;background:${doc.uploaded_by==="client"?"var(--yellow-bg)":"var(--teal-mist)"};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📄</div>
-        <div style="flex:1;min-width:0">
-          <p style="font-size:13px;font-weight:700;color:var(--ink)">${doc.name}</p>
-          <p style="font-size:11px;color:var(--muted)">${(doc.clients||doc)?.name||""} · ${(doc.files||doc)?.address||""} · ${doc.category||"General"}</p>
-        </div>
-        <span style="font-size:10px;font-weight:700;background:${doc.uploaded_by==="client"?"var(--yellow-bg)":"var(--teal-mist)"};color:${doc.uploaded_by==="client"?"var(--yellow)":"var(--teal-dark)"};padding:3px 9px;border-radius:20px;border:1px solid ${doc.uploaded_by==="client"?"var(--yellow-border)":"var(--teal-light)"};flex-shrink:0">${doc.uploaded_by==="client"?"Client":"TC"}</span>
-        <a href="javascript:void(0)" onclick="openDoc('${(doc.url||"").replace(/'/g,"\\'")}')" class="btn btn-teal btn-sm" style="font-size:11px;flex-shrink:0">View ↗</a>
       </div>`).join("")}
     </div>`;
   }
@@ -4026,7 +4005,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <div style="width:36px;height:36px;border-radius:10px;background:${adminBellBg};border:1.5px solid ${adminBellBorder};display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='${adminBellBg}'">🔔</div>
     ${adminBellBadge}
   </div>`;
-  const GLOBAL_TABS=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+  const GLOBAL_TABS=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
   const isGlobalTab=GLOBAL_TABS.includes(tab)||tab==="overview";
   const adminNavItems=[
     {id:"overview",icon:"⊞",label:"Dashboard",section:"main"},
@@ -4036,7 +4015,6 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     {id:"requests",icon:"⬆",label:"Client Requests",section:"main",badge:null},
     {id:"calendar",icon:"⊙",label:"Calendar",section:"main"},
     {id:"contacts-all",icon:"⊛",label:"Contacts",section:"main"},
-    {id:"documents-all",icon:"⊟",label:"Documents",section:"main"},
     {id:"messages-all",icon:"◯",label:"Messages",section:"main"},
     {id:"reports",icon:"≡",label:"Reports",section:"tools"},
     {id:"issues",icon:"🐞",label:"Issue Reports",section:"tools"},
@@ -4557,7 +4535,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   }
   qsa("[data-nav]").forEach(btn=>btn.addEventListener("click",()=>{
     const t=btn.dataset.nav;
-    const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+    const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
     if(globalTabs.includes(t))renderAdmin(null,null,t);
     else renderAdmin(null,null,"overview");
   }));
@@ -4720,7 +4698,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           const clientLabel=n.clients?.name?`<span style="font-size:10px;font-weight:700;background:var(--teal-mist);color:var(--teal-dark);padding:2px 8px;border-radius:20px">${n.clients.name}</span>`:"";
           // Smart routing for admins
           const msg=(n.message||"").toLowerCase();
-          const adminDest=n.type==="issue"?"issues":msg.includes("message")?"messages-all":msg.includes("document")||msg.includes("upload")?"documents-all":msg.includes("feedback")||msg.includes("rating")?"feedback":msg.includes("request")?"requests":msg.includes("task")&&n.client_id?"client":(n.type==="reminder"||msg.includes("key date")||msg.includes("closing date"))?"calendar":"client";
+          const adminDest=n.type==="issue"?"issues":msg.includes("message")?"messages-all":msg.includes("document")||msg.includes("upload")?"client":msg.includes("feedback")||msg.includes("rating")?"feedback":msg.includes("request")?"requests":msg.includes("task")&&n.client_id?"client":(n.type==="reminder"||msg.includes("key date")||msg.includes("closing date"))?"calendar":"client";
           return`<div class="admin-notif-row" data-nid="${n.id}" data-read="${n.is_read}" data-dest="${adminDest}" data-cid="${n.client_id||""}" data-fid="${n.file_id||""}" style="padding:12px 18px;border-bottom:1px solid var(--border);background:${bg};transition:all .2s;cursor:pointer" onmouseover="this.style.background='var(--main-bg)'" onmouseout="this.style.background='${bg}'">
             <div style="display:flex;align-items:flex-start;gap:10px">
               <span style="font-size:16px;flex-shrink:0;margin-top:2px">${ic}</span>
@@ -4755,7 +4733,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           await sb.from("notifications").update({is_read:true}).eq("id",nid);
           panel.remove();
           // Global tabs go straight there; client tabs need cid
-          const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","documents-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+          const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
           if(globalTabs.includes(dest)){
             renderAdmin(null,null,dest);
           }else if(cid){
