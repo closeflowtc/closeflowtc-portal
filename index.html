@@ -454,6 +454,7 @@ const TOUR_STEPS=[
 ];
 let SESSION=null,TOUR_ACTIVE=false,TOUR_STEP=0,TOUR_CLIENT_ID=null,ACTIVE_FILE_ID=null;
 let VIEW_AS_CLIENT=null; // {id,name} when an admin is viewing a client's portal read-only
+let OPEN_UPLOAD_ON_DOCS=false; // when true, the documents tab opens with the upload form expanded
 let CLIENTS_SEARCH="",CLIENTS_STATUS_FILTER="all",CLIENTS_SORT="recent";
 function setClientsSearch(v){CLIENTS_SEARCH=v;}
 function setClientsFilter(v){CLIENTS_STATUS_FILTER=v;renderAdmin(null,null,"clients");}
@@ -1006,7 +1007,7 @@ function showGlobalAddTaskModal(){
 }
 
 // ── GLOBAL UPLOAD DOCUMENT MODAL ─────────────────────────────────────
-function showGlobalUploadDocModal(){
+function showGlobalUploadDocModal(preClientId="",preFileId=""){
   const overlay=document.createElement("div");
   overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
   overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:32px;max-width:500px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease">
@@ -1066,6 +1067,18 @@ function showGlobalUploadDocModal(){
     </div>
   </div>`;
   document.body.appendChild(overlay);
+  // If opened from a specific deal (File tab), preselect that client + load its files
+  if(preClientId){
+    const cSel=overlay.querySelector("#gdoc-client");
+    if(cSel){
+      cSel.value=preClientId;
+      (async()=>{
+        const{data:files}=await sb.from("files").select("id,address").eq("client_id",preClientId).order("created_at");
+        const fSel=overlay.querySelector("#gdoc-file");
+        if(fSel)fSel.innerHTML=`<option value="">Select a deal...</option>`+(files||[]).map(f=>`<option value="${f.id}" ${f.id===preFileId?"selected":""}>${f.address||"Address pending"}</option>`).join("");
+      })();
+    }
+  }
 
   // Tab switching
   let uploadMode="file";
@@ -2116,6 +2129,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
             </div>
           </div>
           <button class="ov-nav-btn" data-navto="documents" style="background:none;border:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--teal);padding:0">View All Documents &rarr;</button>
+          <button onclick="OPEN_UPLOAD_ON_DOCS=true;renderClient('${clientId}','${fileId}','documents')" style="background:var(--teal);border:none;cursor:pointer;font-size:12px;font-weight:700;color:#fff;padding:8px 14px;border-radius:8px;margin-top:8px">&#128206; Attach a Document</button>
         </div>
 
         <!-- Contacts -->
@@ -2720,6 +2734,8 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   });
   on("#photo-file","change",async e=>{if(roBlock())return;const file2=e.target.files[0];if(!file2)return;const reader=new FileReader();reader.onload=async ev=>{await sb.from("clients").update({photo_url:ev.target.result}).eq("id",clientId);await renderClient(clientId,fileId,"account");};reader.readAsDataURL(file2);});
   on("#show-upload-form","click",()=>{const f2=qs("#upload-form");if(f2)f2.style.display="block";const b=qs("#show-upload-form");if(b)b.style.display="none";});
+  // If arriving from the Overview "Attach a Document" button, open the form automatically
+  if(OPEN_UPLOAD_ON_DOCS&&tab==="documents"){OPEN_UPLOAD_ON_DOCS=false;const f2=qs("#upload-form");if(f2)f2.style.display="block";const b=qs("#show-upload-form");if(b)b.style.display="none";}
   on("#cancel-upload","click",()=>{const f2=qs("#upload-form");if(f2)f2.style.display="none";const b=qs("#show-upload-form");if(b)b.style.display="block";});
   on("#submit-cdoc","click",async()=>{
     if(roBlock())return;
@@ -3644,7 +3660,10 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <div class="admin-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
         <p style="font-weight:700;font-size:15px;color:var(--ink)">File Details</p>
-        <button class="btn btn-teal btn-sm" id="add-property-btn">+ Add Property</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="showGlobalUploadDocModal('${activeClientId}','${activeFileId}')">📎 Attach Document</button>
+          <button class="btn btn-teal btn-sm" id="add-property-btn">+ Add Property</button>
+        </div>
       </div>
       ${clientFiles.length>1?`<div class="input-group"><label class="input-label">Viewing Property</label><select class="dark-input" id="admin-file-select">${clientFiles.map(cf=>`<option value="${cf.id}" ${cf.id===activeFileId?"selected":""}>${cf.address||"(address pending)"} — ${cf.status}</option>`).join("")}</select></div>`:""}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
