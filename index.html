@@ -2803,23 +2803,28 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     const category=qs("#cdoc-cat")?.value||"Other";const description=qs("#cdoc-desc")?.value.trim()||"";
     const msg=qs("#cdoc-msg");
     const fileInput=qs("#cdoc-file");const file=fileInput?.files?.[0];
-    const showErr=(txt)=>{if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent=txt;}};
+    const showErr=(txt)=>{if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent=txt;}btnLoad("submit-cdoc",false,"Submit Document");};
     if(!name){showErr("Please enter a document name.");return;}
     if(!file&&!url){showErr("Please upload a file or paste a Google Drive link.");return;}
     btnLoad("submit-cdoc",true,"Submitting…");
-    // If a file was chosen, upload it to private storage and store the path (secure, signed on open)
-    if(file){
-      if(file.size>20*1024*1024){showErr("File is too large. Maximum size is 20MB.");btnLoad("submit-cdoc",false,"Submit Document");return;}
-      const ext=file.name.split(".").pop();
-      const path=`documents/${clientId}/${fileId}/${Date.now()}.${ext}`;
-      const{error:upErr}=await sb.storage.from("portal-docs").upload(path,file,{cacheControl:"3600",upsert:false});
-      if(upErr){showErr(`Upload failed: ${upErr.message}`);btnLoad("submit-cdoc",false,"Submit Document");return;}
-      url="storage:"+path;
+    try{
+      // If a file was chosen, upload it to private storage and store the path (secure, signed on open)
+      if(file){
+        if(file.size>20*1024*1024){showErr("File is too large. Maximum size is 20MB.");return;}
+        const ext=(file.name.split(".").pop()||"file").toLowerCase();
+        const path=`documents/${clientId}/${fileId}/${Date.now()}.${ext}`;
+        const{error:upErr}=await sb.storage.from("portal-docs").upload(path,file,{cacheControl:"3600",upsert:false,contentType:file.type||undefined});
+        if(upErr){showErr(`Upload failed: ${upErr.message}`);return;}
+        url="storage:"+path;
+      }
+      const{error:insErr}=await sb.from("documents").insert({client_id:clientId,file_id:fileId,name,url,category,description,date:new Date().toISOString().slice(0,10),uploaded_by:"client"});
+      if(insErr){showErr(`Couldn't save the document: ${insErr.message}`);return;}
+      await notifyAdmins(client.name,"📄 New Document Upload",`"${name}" | Category: ${category} | Property: ${f.address||"TBD"}`);
+      if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Document submitted! Your coordinator has been notified.";}
+      setTimeout(()=>renderClient(clientId,fileId,"documents"),1200);
+    }catch(e){
+      showErr(`Something went wrong: ${e.message||e}`);
     }
-    await sb.from("documents").insert({client_id:clientId,file_id:fileId,name,url,category,description,date:new Date().toISOString().slice(0,10),uploaded_by:"client"});
-    await notifyAdmins(client.name,"📄 New Document Upload",`"${name}" | Category: ${category} | Property: ${f.address||"TBD"}`);
-    if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Document submitted! Your coordinator has been notified.";}
-    setTimeout(()=>renderClient(clientId,fileId,"documents"),1200);
   });
   on("#restart-tour","click",()=>startTour(clientId,renderClient));
 
