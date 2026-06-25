@@ -1193,7 +1193,7 @@ function showGlobalUploadDocModal(preClientId="",preFileId=""){
         statusEl.textContent="Please paste a Google Drive link.";btn.textContent="Upload Document";btn.disabled=false;return;
       }
     }
-    const{error:insErr}=await sb.from("documents").insert({client_id:clientId,file_id:fileId,name,url:docUrl,category,uploaded_by:"admin"});
+    const{error:insErr}=await sb.from("documents").insert({client_id:clientId,file_id:fileId,name,url:docUrl,category,date:new Date().toISOString().slice(0,10),uploaded_by:"admin"});
     if(insErr){
       statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";
       statusEl.textContent=`Couldn't save the document: ${insErr.message}`;btn.textContent="Upload Document";btn.disabled=false;return;
