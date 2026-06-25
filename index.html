@@ -3734,7 +3734,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           <button class="btn btn-teal btn-sm" id="add-property-btn">+ Add Property</button>
         </div>
       </div>
-      ${clientFiles.length>1?`<div class="input-group"><label class="input-label">Viewing Property</label><select class="dark-input" id="admin-file-select">${clientFiles.map(cf=>`<option value="${cf.id}" ${cf.id===activeFileId?"selected":""}>${cf.address||"(address pending)"} — ${cf.status}</option>`).join("")}</select></div>`:""}
+      ${clientFiles.length>1?`<div class="input-group"><label class="input-label">Viewing Property</label><p style="font-size:12px;color:var(--muted);padding:4px 0">Use the property banner above to switch between this client's ${clientFiles.length} properties.</p></div>`:""}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div class="input-group"><label class="input-label">Property Address</label><input class="dark-input" id="f-address" value="${f.address||""}" placeholder="123 Main St"/></div>
         <div class="input-group"><label class="input-label">Closing Date</label><input class="dark-input" id="f-closing" type="date" value="${f.closing_date||""}"/></div>
@@ -4175,11 +4175,14 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           </div>
         </div>
         <div class="admin-tab-bar">${adminTabs.map(t=>`<button data-atab="${t.id}" class="admin-tab ${t.id===tab?"active":""}">${t.label}</button>`).join("")}</div>`:""}
-      ${activeFileId&&f?`<div style="display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,var(--teal),var(--teal-dark));border-radius:14px;padding:14px 18px;margin:14px 0;box-shadow:0 4px 14px rgba(58,157,181,.25);flex-wrap:wrap">
+      ${activeFileId&&f?`<div style="display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--teal),var(--teal-dark));border-radius:14px;padding:14px 18px;margin:14px 0;box-shadow:0 4px 14px rgba(58,157,181,.25);flex-wrap:wrap">
         <span style="font-size:22px;flex-shrink:0">📍</span>
         <div style="flex:1;min-width:0">
-          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.08em">Currently Viewing</p>
-          <p style="font-size:16px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.address||"Address pending"}</p>
+          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Currently Viewing${clientFiles&&clientFiles.length>1?" — switch property below":""}</p>
+          ${clientFiles&&clientFiles.length>1
+            ? `<select id="banner-file-select" style="width:100%;max-width:520px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:8px 12px;font-size:15px;font-weight:800;color:#fff;cursor:pointer;outline:none">${clientFiles.map(cf=>`<option value="${cf.id}" ${cf.id===activeFileId?"selected":""} style="color:#1C2B32">${cf.address||"Address pending"} — ${cf.status}</option>`).join("")}</select>`
+            : `<p style="font-size:16px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.address||"Address pending"}</p>`
+          }
         </div>
         ${(clientFiles&&clientFiles.length>1)?`<span style="font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:5px 12px;border-radius:20px;flex-shrink:0">Property ${clientFiles.findIndex(x=>x.id===activeFileId)+1} of ${clientFiles.length}</span>`:""}
       </div>`:""}
@@ -4618,6 +4621,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   qsa(".deal-row[data-cid]").forEach(row=>row.addEventListener("click",()=>renderAdmin(row.dataset.cid,row.dataset.fid,"client")));
   qsa("[data-atab]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(activeClientId,activeFileId,btn.dataset.atab)));
   on("#admin-file-select","change",e=>renderAdmin(activeClientId,e.target.value,tab));
+  on("#banner-file-select","change",e=>renderAdmin(activeClientId,e.target.value,tab));
 
   // Add property
   on("#add-property-btn","click",()=>{const f2=qs("#add-prop-form");if(f2)f2.style.display="block";});
