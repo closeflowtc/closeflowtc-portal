@@ -1181,7 +1181,7 @@ function showGlobalUploadDocModal(preClientId="",preFileId=""){
       statusEl.textContent="Please fill in all required fields.";return;
     }
     const btn=overlay.querySelector("#save-gdoc");
-    btn.textContent="Uploading…";btn.disabled=true;
+    btn.innerHTML=`<span class="btn-spinner"></span>Uploading…`;btn.disabled=true;
     let docUrl="";
     if(uploadMode==="file"){
       const fileInput=overlay.querySelector("#gdoc-file-input");
@@ -1220,8 +1220,9 @@ function showGlobalUploadDocModal(preClientId="",preFileId=""){
     const client=_allClients.find(c=>c.id===clientId);
     if(client)await createNotification(clientId,fileId,`New document available: "${name}"`, "info");
     await sb.from("activity_log").insert({file_id:fileId,admin_name:SESSION?.admin?.name||"Admin",action:"uploaded a document",details:name.slice(0,80)});
-    overlay.remove();
-    renderAdmin(clientId,fileId,"client");
+    btn.textContent="✓ Upload Successful!";btn.style.background="#38A169";btn.style.borderColor="#38A169";
+    if(statusEl){statusEl.style.display="block";statusEl.style.background="#F0FFF4";statusEl.style.color="#276749";statusEl.textContent="✓ Document uploaded successfully!";}
+    setTimeout(()=>{overlay.remove();renderAdmin(clientId,fileId,"client");},1200);
   });
 }
 
@@ -2843,8 +2844,9 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       const{error:insErr}=await sb.from("documents").insert({client_id:clientId,file_id:fileId,name,url,category,description,date:new Date().toISOString().slice(0,10),uploaded_by:"client"});
       if(insErr){showErr(`Couldn't save the document: ${insErr.message}`);return;}
       await notifyAdmins(client.name,"📄 New Document Upload",`"${name}" | Category: ${category} | Property: ${f.address||"TBD"}`);
-      if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Document submitted! Your coordinator has been notified.";}
-      setTimeout(()=>renderClient(clientId,fileId,"documents"),1200);
+      btnLoad("submit-cdoc",false,"✓ Upload Successful!");
+      if(msg){msg.style.display="block";msg.style.background="#F0FFF4";msg.style.color="#276749";msg.textContent="✓ Document uploaded successfully! Your coordinator has been notified.";}
+      setTimeout(()=>renderClient(clientId,fileId,"documents"),1400);
     }catch(e){
       showErr(`Something went wrong: ${e.message||e}`);
     }
@@ -4179,7 +4181,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.08em">Currently Viewing</p>
           <p style="font-size:16px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.address||"Address pending"}</p>
         </div>
-        ${(files&&files.length>1)?`<span style="font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:5px 12px;border-radius:20px;flex-shrink:0">Property ${files.findIndex(x=>x.id===activeFileId)+1} of ${files.length}</span>`:""}
+        ${(clientFiles&&clientFiles.length>1)?`<span style="font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:5px 12px;border-radius:20px;flex-shrink:0">Property ${clientFiles.findIndex(x=>x.id===activeFileId)+1} of ${clientFiles.length}</span>`:""}
       </div>`:""}
       ${mainContent}
     </div>
