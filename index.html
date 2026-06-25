@@ -424,6 +424,14 @@ const TOUR_STEPS=[
     video:null,
   },
   {
+    tab:"overview",icon:"🏘️",
+    targetSel:"#property-select",
+    title:"Switching Between Your Properties",
+    body:"If you have more than one property with us, this is where you switch between them. The bar at the top always shows which property you are currently viewing — everything on your screen (documents, dates, tasks) belongs to the property shown here.",
+    action:"Tap or click the property name at the top to see your other properties and switch between them. Always check this bar so you know which property you are looking at.",
+    video:null,
+  },
+  {
     tab:"dates",icon:"📅",
     title:"Your Key Dates",
     body:"Every important deadline in your closing is listed here — things like your Earnest Money Deposit due date, your title order, and your target closing date. Your CloseFlow TC coordinator adds these for you and updates them if anything changes. You will receive an email notification any time a date is added or updated.",
@@ -625,7 +633,7 @@ function renderTourOverlay(step,total,renderFn){
 
   // Spotlight the highlighted nav button
   const navBtns=document.querySelectorAll(".client-nav-btn");
-  const activeBtn=Array.from(navBtns).find(b=>b.dataset.tab===s.tab);
+  const activeBtn=s.targetSel?document.querySelector(s.targetSel):Array.from(navBtns).find(b=>b.dataset.tab===s.tab);
 
   // Backdrop container (no dim of its own — dimming is done by 4 rects so the highlighted item shows through clean)
   const backdrop=document.createElement("div");
@@ -708,16 +716,27 @@ function renderTourOverlay(step,total,renderFn){
     const tipW=tooltip.offsetWidth;
     if(activeBtn&&!isMobile){
       const r=activeBtn.getBoundingClientRect();
-      const sidebarRight=Math.max(r.right, document.querySelector(".sidebar")?.getBoundingClientRect().right||220);
-      // Sit just right of the sidebar, vertically centered on the highlighted item, clamped to viewport
-      let top=r.top+r.height/2-tipH/2;
-      top=Math.max(16, Math.min(top, window.innerHeight-tipH-16));
-      let left=sidebarRight+20;
-      // If it would run off the right edge, pull it back
-      if(left+tipW>window.innerWidth-16)left=Math.max(16, window.innerWidth-tipW-16);
-      tooltip.style.top=`${top}px`;
-      tooltip.style.left=`${left}px`;
-      tooltip.style.transform="none";
+      if(s.targetSel){
+        // Target is a topbar element (e.g. property switcher): place tooltip just BELOW it
+        let top=r.bottom+16;
+        top=Math.min(top, window.innerHeight-tipH-16);
+        let left=r.left+r.width/2-tipW/2;
+        left=Math.max(16, Math.min(left, window.innerWidth-tipW-16));
+        tooltip.style.top=`${top}px`;
+        tooltip.style.left=`${left}px`;
+        tooltip.style.transform="none";
+      }else{
+        const sidebarRight=Math.max(r.right, document.querySelector(".sidebar")?.getBoundingClientRect().right||220);
+        // Sit just right of the sidebar, vertically centered on the highlighted item, clamped to viewport
+        let top=r.top+r.height/2-tipH/2;
+        top=Math.max(16, Math.min(top, window.innerHeight-tipH-16));
+        let left=sidebarRight+20;
+        // If it would run off the right edge, pull it back
+        if(left+tipW>window.innerWidth-16)left=Math.max(16, window.innerWidth-tipW-16);
+        tooltip.style.top=`${top}px`;
+        tooltip.style.left=`${left}px`;
+        tooltip.style.transform="none";
+      }
     }else{
       // Centered (mobile or no target)
       tooltip.style.top="50%";
@@ -4154,6 +4173,14 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           </div>
         </div>
         <div class="admin-tab-bar">${adminTabs.map(t=>`<button data-atab="${t.id}" class="admin-tab ${t.id===tab?"active":""}">${t.label}</button>`).join("")}</div>`:""}
+      ${activeFileId&&f?`<div style="display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,var(--teal),var(--teal-dark));border-radius:14px;padding:14px 18px;margin:14px 0;box-shadow:0 4px 14px rgba(58,157,181,.25);flex-wrap:wrap">
+        <span style="font-size:22px;flex-shrink:0">📍</span>
+        <div style="flex:1;min-width:0">
+          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.08em">Currently Viewing</p>
+          <p style="font-size:16px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.address||"Address pending"}</p>
+        </div>
+        ${(files&&files.length>1)?`<span style="font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:5px 12px;border-radius:20px;flex-shrink:0">Property ${files.findIndex(x=>x.id===activeFileId)+1} of ${files.length}</span>`:""}
+      </div>`:""}
       ${mainContent}
     </div>
   </div>
