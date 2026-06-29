@@ -2088,6 +2088,13 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
           <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-light));border-radius:50px;transition:width .6s ease"></div>
         </div>
         <p style="font-size:12px;color:var(--ink);font-weight:600;margin-top:8px">Current step: <span style="color:var(--teal)">${stageLabel}</span></p>
+        ${(f.leg_side==="ab"||f.leg_side==="bc")?`<div style="margin-top:10px;display:inline-flex;align-items:center;gap:8px;background:${f.leg_side==="ab"?"#E6F1FB":"#FAEEDA"};border:1px solid ${f.leg_side==="ab"?"#85B7EB":"#EF9F27"};border-radius:10px;padding:7px 12px">
+          <span style="font-size:14px">${f.leg_side==="ab"?"🟦":"🟧"}</span>
+          <div>
+            <p style="font-size:12px;font-weight:800;color:${f.leg_side==="ab"?"#0C447C":"#854F0B"}">${f.leg_side==="ab"?"A/B Side · Acquisition":"B/C Side · Disposition"}</p>
+            <p style="font-size:11px;color:${f.leg_side==="ab"?"#185FA5":"#BA7517"}">This is a double close. ${f.leg_side==="ab"?"This leg is where you purchase the property. It closes first.":"This leg is where you sell the property. It closes after the purchase side funds."}</p>
+          </div>
+        </div>`:""}
       </div>`;
     })()}
     <!-- 3-COLUMN DASHBOARD LAYOUT -->
@@ -3740,6 +3747,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <div class="input-group"><label class="input-label">Closing Date</label><input class="dark-input" id="f-closing" type="date" value="${f.closing_date||""}"/></div>
         <div class="input-group"><label class="input-label">Status</label><select class="dark-input" id="f-status">${FILE_STATUSES.map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
         <div class="input-group"><label class="input-label">Milestone</label><select class="dark-input" id="f-milestone">${MILESTONES.map((m,i)=>`<option value="${i}" ${f.milestone===i?"selected":""}>${i+1}. ${m}</option>`).join("")}</select></div>
+        <div class="input-group"><label class="input-label">Deal Leg <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(for double closes)</span></label><select class="dark-input" id="f-leg"><option value="standard" ${(!f.leg_side||f.leg_side==="standard")?"selected":""}>Standard (single deal)</option><option value="ab" ${f.leg_side==="ab"?"selected":""}>A/B Side · Acquisition (client buys)</option><option value="bc" ${f.leg_side==="bc"?"selected":""}>B/C Side · Disposition (client sells)</option></select></div>
         <div class="input-group" style="grid-column:1/-1"><label class="input-label">Coordinator</label><div id="coord-dropdown-wrap"><select class="dark-input" id="f-coord"><option value="${f.coordinator||"Danielle McCarter"}">${f.coordinator||"Danielle McCarter"}</option></select></div></div>
         <div class="input-group" style="grid-column:1/-1">
           <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;border:1.5px solid ${f.needs_attention?"#FBD38D":"var(--border)"};background:${f.needs_attention?"#FFFAF0":"var(--main-bg)"};cursor:pointer;transition:all .2s">
@@ -4178,7 +4186,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       ${activeFileId&&f?`<div style="display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--teal),var(--teal-dark));border-radius:14px;padding:14px 18px;margin:14px 0;box-shadow:0 4px 14px rgba(58,157,181,.25);flex-wrap:wrap">
         <span style="font-size:22px;flex-shrink:0">📍</span>
         <div style="flex:1;min-width:0">
-          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Currently Viewing${clientFiles&&clientFiles.length>1?" — switch property below":""}</p>
+          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Currently Viewing${clientFiles&&clientFiles.length>1?" — switch property below":""}${(f.leg_side==="ab"||f.leg_side==="bc")?` &nbsp;·&nbsp; <span style="background:rgba(255,255,255,.25);padding:2px 8px;border-radius:20px">${f.leg_side==="ab"?"A/B SIDE · ACQUISITION":"B/C SIDE · DISPOSITION"}</span>`:""}</p>
           ${clientFiles&&clientFiles.length>1
             ? `<select id="banner-file-select" style="width:100%;max-width:520px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:8px 12px;font-size:15px;font-weight:800;color:#fff;cursor:pointer;outline:none">${clientFiles.map(cf=>`<option value="${cf.id}" ${cf.id===activeFileId?"selected":""} style="color:#1C2B32">${cf.address||"Address pending"} — ${cf.status}</option>`).join("")}</select>`
             : `<p style="font-size:16px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.address||"Address pending"}</p>`
@@ -4646,10 +4654,11 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const milestone=parseInt(qs("#f-milestone")?.value||0);
     const coordinator=qs("#f-coord")?.value||"Danielle McCarter";
     const needs_attention=qs("#f-attention")?.checked||false;
+    const leg_side=qs("#f-leg")?.value||"standard";
     const prev=file;
-    const{error:saveErr}=await sb.from("files").update({address,closing_date,status,milestone,coordinator,needs_attention}).eq("id",activeFileId);
+    const{error:saveErr}=await sb.from("files").update({address,closing_date,status,milestone,coordinator,needs_attention,leg_side}).eq("id",activeFileId);
     if(saveErr){
-      // Fallback: column may not exist yet — save the rest so nothing is lost
+      // Fallback: a column may not exist yet — save the rest so nothing is lost
       await sb.from("files").update({address,closing_date,status,milestone,coordinator}).eq("id",activeFileId);
     }
     if(client&&prev){
