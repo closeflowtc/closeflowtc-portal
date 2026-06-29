@@ -513,6 +513,24 @@ document.addEventListener("click",e=>{
 });
 // Open a document: storage-backed files get a fresh signed URL (private bucket);
 // plain links (e.g. Google Drive) open directly.
+// Sort files so double-close legs sit next to each other (A/B then B/C, grouped by address)
+function sortFilesGrouped(arr){
+  const list=(arr||[]).slice();
+  const baseAddr=a=>String(a.address||"").replace(/\s*[—-]\s*(A\/B|B\/C|Buy|Sell).*$/i,"").trim().toLowerCase();
+  return list.sort((a,b)=>{
+    const ka=baseAddr(a),kb=baseAddr(b);
+    if(ka!==kb)return ka<kb?-1:1;
+    // same property: A/B leg comes before B/C leg, standard last
+    const rank=x=>x.leg_side==="ab"?0:x.leg_side==="bc"?1:2;
+    return rank(a)-rank(b);
+  });
+}
+// Short leg label for dropdown options
+function legTag(f2){
+  if(f2.leg_side==="ab")return " 🟦 A/B Side · you buy";
+  if(f2.leg_side==="bc")return " 🟧 B/C Side · you sell";
+  return "";
+}
 async function openDoc(urlOrPath){
   try{
     if(urlOrPath&&urlOrPath.startsWith("storage:")){
@@ -2051,7 +2069,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     <div class="property-selector">
       <span style="font-size:14px">🏠</span>
       <select id="property-select" style="border:none;outline:none;background:transparent;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;flex:1">
-        ${files.map(f2=>`<option value="${f2.id}" ${f2.id===fileId?"selected":""}>${f2.address||"Property (address pending)"} — ${f2.status}</option>`).join("")}
+        ${sortFilesGrouped(files).map(f2=>`<option value="${f2.id}" ${f2.id===fileId?"selected":""}>${f2.address||"Property (address pending)"} — ${f2.status}${legTag(f2)}</option>`).join("")}
       </select>
     </div>`:`<div style="font-size:13px;color:var(--muted);padding:6px 12px;background:var(--main-bg);border-radius:10px;border:1px solid var(--border)">No properties yet</div>`;
 
@@ -2608,7 +2626,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
         <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:5px 14px;flex:1;max-width:360px;margin:0 20px">
           <span style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600;flex-shrink:0">Property:</span>
           <select id="property-select" style="border:none;outline:none;background:transparent;font-size:13px;font-weight:700;color:#fff;cursor:pointer;flex:1;min-width:0">
-            ${files.map(f2=>`<option value="${f2.id}" ${f2.id===fileId?"selected":""}>${f2.address||"Address pending"}</option>`).join("")}
+            ${sortFilesGrouped(files).map(f2=>`<option value="${f2.id}" ${f2.id===fileId?"selected":""}>${f2.address||"Address pending"}${legTag(f2)}</option>`).join("")}
           </select>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
@@ -4188,7 +4206,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <div style="flex:1;min-width:0">
           <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Currently Viewing${clientFiles&&clientFiles.length>1?" — switch property below":""}${(f.leg_side==="ab"||f.leg_side==="bc")?` &nbsp;·&nbsp; <span style="background:rgba(255,255,255,.25);padding:2px 8px;border-radius:20px">${f.leg_side==="ab"?"A/B SIDE · ACQUISITION":"B/C SIDE · DISPOSITION"}</span>`:""}</p>
           ${clientFiles&&clientFiles.length>1
-            ? `<select id="banner-file-select" style="width:100%;max-width:520px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:8px 12px;font-size:15px;font-weight:800;color:#fff;cursor:pointer;outline:none">${clientFiles.map(cf=>`<option value="${cf.id}" ${cf.id===activeFileId?"selected":""} style="color:#1C2B32">${cf.address||"Address pending"} — ${cf.status}</option>`).join("")}</select>`
+            ? `<select id="banner-file-select" style="width:100%;max-width:520px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:8px 12px;font-size:15px;font-weight:800;color:#fff;cursor:pointer;outline:none">${sortFilesGrouped(clientFiles).map(cf=>`<option value="${cf.id}" ${cf.id===activeFileId?"selected":""} style="color:#1C2B32">${cf.address||"Address pending"} — ${cf.status}${legTag(cf)}</option>`).join("")}</select>`
             : `<p style="font-size:16px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.address||"Address pending"}</p>`
           }
         </div>
