@@ -1456,7 +1456,16 @@ async function confirmBulkDelete(itemType){
   overlay.querySelector("#confirm-bulk-delete").addEventListener("click",async()=>{
     const ids=Array.from(bulkSelected);
     if(itemType==="deals"||itemType==="files"){
-      await sb.from("files").delete().in("id",ids);
+      // Delete child records first so foreign-key constraints don't block the file delete
+      await sb.from("tasks").delete().in("file_id",ids);
+      await sb.from("key_dates").delete().in("file_id",ids);
+      await sb.from("contacts").delete().in("file_id",ids);
+      await sb.from("documents").delete().in("file_id",ids);
+      await sb.from("activity_log").delete().in("file_id",ids);
+      await sb.from("internal_notes").delete().in("file_id",ids);
+      await sb.from("client_requests").delete().in("file_id",ids);
+      const{error:delErr}=await sb.from("files").delete().in("id",ids);
+      if(delErr){alert("Couldn't delete: "+delErr.message);return;}
     }else if(itemType==="clients"){
       for(const cid of ids){
         const{data:clientFiles}=await sb.from("files").select("id").eq("client_id",cid);
@@ -1466,11 +1475,16 @@ async function confirmBulkDelete(itemType){
           await sb.from("key_dates").delete().in("file_id",fileIds);
           await sb.from("contacts").delete().in("file_id",fileIds);
           await sb.from("documents").delete().in("file_id",fileIds);
+          await sb.from("activity_log").delete().in("file_id",fileIds);
+          await sb.from("internal_notes").delete().in("file_id",fileIds);
+          await sb.from("client_requests").delete().in("file_id",fileIds);
         }
         await sb.from("files").delete().eq("client_id",cid);
         await sb.from("messages").delete().eq("client_id",cid);
         await sb.from("notifications").delete().eq("client_id",cid);
-        await sb.from("clients").delete().eq("id",cid);
+        await sb.from("feedback").delete().eq("client_id",cid);
+        const{error:cErr}=await sb.from("clients").delete().eq("id",cid);
+        if(cErr){alert("Couldn't delete client: "+cErr.message);return;}
       }
     }else if(itemType==="documents"){
       await sb.from("documents").delete().in("id",ids);
