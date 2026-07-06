@@ -3913,9 +3913,12 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const cl=contacts||[];
     const cfTeamC=cl.filter(c=>c.contact_type==="closeflow_team");
     const authSignC=cl.filter(c=>c.contact_type==="authorized_signer");
+    const sellerC=cl.filter(c=>c.contact_type==="seller");
+    const buyerC=cl.filter(c=>c.contact_type==="buyer");
+    const titleC=cl.filter(c=>c.contact_type==="title_company");
     const otherC=cl.filter(c=>c.contact_type==="other"||!c.contact_type);
-    const ctypeLabels={closeflow_team:"CloseFlow TC Team",authorized_signer:"Authorized Signer",other:"Other Contact"};
-    const ctypeBadge=(ct)=>{const map={closeflow_team:{bg:"var(--teal-mist)",text:"var(--teal-dark)",label:"CloseFlow TC Team"},authorized_signer:{bg:"#FAF5FF",text:"#553C9A",label:"Auth. Signer"},other:{bg:"#FEFCBF",text:"#744210",label:"Other"}};const s=map[ct]||map.other;return`<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${s.bg};color:${s.text}">${s.label}</span>`;};
+    const ctypeLabels={closeflow_team:"CloseFlow TC Team",authorized_signer:"Authorized Signer",seller:"Seller",buyer:"Buyer",title_company:"Title Company",other:"Other Contact"};
+    const ctypeBadge=(ct)=>{const map={closeflow_team:{bg:"var(--teal-mist)",text:"var(--teal-dark)",label:"CloseFlow TC Team"},authorized_signer:{bg:"#FAF5FF",text:"#553C9A",label:"Auth. Signer"},seller:{bg:"#E6F1FB",text:"#0C447C",label:"Seller"},buyer:{bg:"#FAEEDA",text:"#854F0B",label:"Buyer"},title_company:{bg:"#E7F6F0",text:"#0F6E56",label:"Title Company"},other:{bg:"#FEFCBF",text:"#744210",label:"Other"}};const s=map[ct]||map.other;return`<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${s.bg};color:${s.text}">${s.label}</span>`;};
     function contactSection(title,icon,bg,list){
       if(list.length===0)return"";
       return`<div style="margin-bottom:16px">
@@ -3941,6 +3944,9 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
             <select class="dark-input" id="c-type">
               <option value="closeflow_team">CloseFlow TC Team</option>
               <option value="authorized_signer">Authorized Signer</option>
+              <option value="seller">Seller</option>
+              <option value="buyer">Buyer</option>
+              <option value="title_company">Title Company</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -3956,6 +3962,9 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       <!-- Contact sections by type -->
       ${cl.length===0?`<div style="text-align:center;padding:32px;color:var(--muted)"><p style="font-size:32px;margin-bottom:8px">🏢</p><p>No contacts added yet.</p></div>`:""}
       ${contactSection("CloseFlow TC Team","🏢","var(--teal-mist)",cfTeamC)}
+      ${contactSection("Sellers","🔵","#E6F1FB",sellerC)}
+      ${contactSection("Buyers","🟠","#FAEEDA",buyerC)}
+      ${contactSection("Title Companies","🏛️","#E7F6F0",titleC)}
       ${contactSection("Authorized Signers","✍️","#FAF5FF",authSignC)}
       ${contactSection("Other Contacts","🤝","#FEFCBF",otherC)}
     </div>`;
