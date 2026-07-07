@@ -399,7 +399,7 @@ async function markInviteCodeUsed(id){
   if(!id)return;
   await sb.from("invite_codes").update({used:true}).eq("id",id);
 }
-const MILESTONES=["Deal Submitted","Title Ordered","Title Search Complete","Clear to Close","HUD Sent for Approval","Closing Scheduled","Closed"];
+const MILESTONES=["Deal Initiation","Open Escrow Pending","Escrow Opened/EMD Pending","EMD Paid","Title Commitment","HUD/Alta","Clear to Close","Closed/Recorded"];
 const FILE_STATUSES=["Active","Pending","On Hold","Archived","Closed"];
 const STATUS={
   Active:{bg:"#C6F6D5",text:"#276749",dot:"#38A169"},
@@ -419,7 +419,7 @@ const TOUR_STEPS=[
   {
     tab:"overview",icon:"📊",
     title:"Your Closing Progress",
-    body:"The progress bar on your dashboard shows exactly where your closing stands right now. Each step — from Deal Submitted all the way to Closed — is tracked here automatically by your CloseFlow TC coordinator. You do not need to do anything to update it.",
+    body:"The progress bar on your dashboard shows exactly where your closing stands right now. Each step — from Deal Initiation all the way to Closed/Recorded — is tracked here automatically by your CloseFlow TC coordinator. You do not need to do anything to update it.",
     action:"Look at the bar that shows how many steps are complete. That is your current milestone. If you have questions about what any step means, send your CloseFlow TC coordinator a message anytime.",
     video:null,
   },
@@ -1427,7 +1427,7 @@ async function confirmBulkArchive(){
   overlay.querySelector("#cancel-bulk-archive").addEventListener("click",()=>overlay.remove());
   overlay.querySelector("#confirm-bulk-archive").addEventListener("click",async()=>{
     const ids=Array.from(bulkSelected);
-    const{error}=await sb.from("files").update({deal_stage:"Archived",status:"Archived"}).in("id",ids);
+    const{error}=await sb.from("files").update({status:"Archived"}).in("id",ids);
     overlay.remove();
     bulkSelected.clear();
     const toolbar=document.getElementById("bulk-toolbar");
@@ -2992,9 +2992,9 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   const pending=allClients.filter(c=>c.status==="Pending").length;
   const onHold=allClients.filter(c=>c.status==="On Hold").length;
 
-  const DEAL_STAGES=["Deal Initiation","Open Escrow Pending","Escrow Opened","EMD Pending","EMD Paid","Title Commitment","HUD/ALTA Review","Clear to Close","Closing Scheduled","Closed/Recorded","Post Closing","Archived"];
+  const DEAL_STAGES=["Deal Initiation","Open Escrow Pending","Escrow Opened/EMD Pending","EMD Paid","Title Commitment","HUD/Alta","Clear to Close","Closed/Recorded"];
   const today2=new Date();today2.setHours(0,0,0,0);
-  const inEscrow=(allFiles||[]).filter(f2=>["Escrow Opened","EMD Pending","EMD Paid","Title Commitment","HUD/ALTA Review"].includes(f2.deal_stage||"")).length;
+  const inEscrow=(allFiles||[]).filter(f2=>["Escrow Opened/EMD Pending","EMD Paid","Title Commitment","HUD/Alta"].includes(f2.deal_stage||"")).length;
   const closingThisWeek=(allFiles||[]).filter(f2=>{if(!f2.closing_date)return false;const d=new Date(f2.closing_date);const diff=(d-today2)/(1000*60*60*24);return diff>=0&&diff<=7;}).length;
   const needsAttention=(allFiles||[]).filter(f2=>f2.needs_attention).length;
   const tasksDueToday=(allTasks2||[]).filter(t=>t.status!=="complete").length;
@@ -3048,7 +3048,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <p style="font-size:12px;color:var(--muted)">Total Active Deals: <strong style="color:var(--ink)">${allFiles.length}</strong> &nbsp;·&nbsp; Closed This Month: <strong style="color:var(--success)">${(allFiles||[]).filter(f2=>f2.deal_stage==="Closed/Recorded").length}</strong></p>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
-        ${[{label:"Active",val:allFiles.filter(f2=>f2.deal_stage!=="Closed/Recorded"&&f2.deal_stage!=="Archived").length,color:"#3A9DB5",bg:"var(--teal-mist)"},{label:"Closed",val:allFiles.filter(f2=>f2.deal_stage==="Closed/Recorded").length,color:"#38A169",bg:"#F0FFF4"},{label:"Pending",val:pending,color:"#D69E2E",bg:"#FFFFF0"},{label:"On Hold",val:onHold,color:"#E53E3E",bg:"#FFF5F5"}].map(r=>`
+        ${[{label:"Active",val:allFiles.filter(f2=>f2.deal_stage!=="Closed/Recorded"&&f2.status!=="Archived").length,color:"#3A9DB5",bg:"var(--teal-mist)"},{label:"Closed",val:allFiles.filter(f2=>f2.deal_stage==="Closed/Recorded").length,color:"#38A169",bg:"#F0FFF4"},{label:"Pending",val:pending,color:"#D69E2E",bg:"#FFFFF0"},{label:"On Hold",val:onHold,color:"#E53E3E",bg:"#FFF5F5"}].map(r=>`
           <div style="background:${r.bg};border:1.5px solid ${r.color}22;border-radius:14px;padding:18px;text-align:center">
             <p style="font-size:28px;font-weight:900;color:${r.color};line-height:1;margin-bottom:6px">${r.val}</p>
             <p style="font-size:12px;font-weight:600;color:var(--muted)">${r.label}</p>
@@ -3197,15 +3197,16 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
 
 
   else if(tab==="deals"){
-    const ESCROW_STAGES=["Escrow Opened","EMD Pending","EMD Paid","Title Commitment","HUD/ALTA Review"];
+    const ESCROW_STAGES=["Escrow Opened/EMD Pending","EMD Paid","Title Commitment","HUD/Alta"];
     const stageFiltered=allFiles.filter(d=>{
-      if(DEALS_STAGE_FILTER==="active")return d.deal_stage!=="Archived";
+      if(DEALS_STAGE_FILTER==="active")return d.status!=="Archived";
       if(DEALS_STAGE_FILTER==="all")return true;
-      if(DEALS_STAGE_FILTER==="escrow")return ESCROW_STAGES.includes(d.deal_stage||"");
-      if(DEALS_STAGE_FILTER==="attention")return !!d.needs_attention;
-      return(d.deal_stage||"Deal Initiation")===DEALS_STAGE_FILTER;
+      if(DEALS_STAGE_FILTER==="archived")return d.status==="Archived";
+      if(DEALS_STAGE_FILTER==="escrow")return d.status!=="Archived"&&ESCROW_STAGES.includes(d.deal_stage||"");
+      if(DEALS_STAGE_FILTER==="attention")return d.status!=="Archived"&&!!d.needs_attention;
+      return d.status!=="Archived"&&(d.deal_stage||"Deal Initiation")===DEALS_STAGE_FILTER;
     });
-    const archivedCount=allFiles.filter(d=>d.deal_stage==="Archived").length;
+    const archivedCount=allFiles.filter(d=>d.status==="Archived").length;
     mainContent=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
       <div><h1 style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:3px">Deals</h1><p style="font-size:13px;color:var(--muted)">${DEALS_STAGE_FILTER==="escrow"?`Showing deals in escrow · `:DEALS_STAGE_FILTER==="attention"?`Showing deals that need attention · `:""}${stageFiltered.length} deal${stageFiltered.length===1?"":"s"} shown${DEALS_STAGE_FILTER==="active"&&archivedCount>0?` · ${archivedCount} archived`:""} — click any deal to open</p></div>
@@ -3214,7 +3215,8 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           <option value="active" ${DEALS_STAGE_FILTER==="active"?"selected":""}>All Active</option>
           <option value="escrow" ${DEALS_STAGE_FILTER==="escrow"?"selected":""}>In Escrow (grouped)</option>
           <option value="attention" ${DEALS_STAGE_FILTER==="attention"?"selected":""}>⚠️ Needs Attention</option>
-          ${DEAL_STAGES.map(s=>`<option value="${s}" ${DEALS_STAGE_FILTER===s?"selected":""}>${s}${s==="Archived"&&archivedCount>0?` (${archivedCount})`:""}</option>`).join("")}
+          ${DEAL_STAGES.map(s=>`<option value="${s}" ${DEALS_STAGE_FILTER===s?"selected":""}>${s}</option>`).join("")}
+          <option value="archived" ${DEALS_STAGE_FILTER==="archived"?"selected":""}>Archived${archivedCount>0?` (${archivedCount})`:""}</option>
           <option value="all" ${DEALS_STAGE_FILTER==="all"?"selected":""}>All Deals (incl. archived)</option>
         </select>
         ${stageFiltered.length>0?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer"><input type="checkbox" id="select-all-checkbox" class="bulk-checkbox"/> Select All</label>`:""}
@@ -3542,7 +3544,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
       <div class="admin-card" style="margin-bottom:0">
         <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:16px">Deal Summary</p>
-        ${[{label:"Total Deals",val:allFiles.length},{label:"Active Deals",val:allFiles.filter(f2=>f2.deal_stage!=="Closed/Recorded"&&f2.deal_stage!=="Archived").length},{label:"Closed / Recorded",val:closedDeals.length},{label:"Needs Attention",val:needsAttention},{label:"Total Clients",val:allClients.length},{label:"Team Members",val:(admins||[]).length}].map(r=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)"><p style="font-size:13px;color:var(--muted)">${r.label}</p><p style="font-size:15px;font-weight:800;color:var(--ink)">${r.val}</p></div>`).join("")}
+        ${[{label:"Total Deals",val:allFiles.length},{label:"Active Deals",val:allFiles.filter(f2=>f2.deal_stage!=="Closed/Recorded"&&f2.status!=="Archived").length},{label:"Closed / Recorded",val:closedDeals.length},{label:"Needs Attention",val:needsAttention},{label:"Total Clients",val:allClients.length},{label:"Team Members",val:(admins||[]).length}].map(r=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)"><p style="font-size:13px;color:var(--muted)">${r.label}</p><p style="font-size:15px;font-weight:800;color:var(--ink)">${r.val}</p></div>`).join("")}
       </div>
       <div class="admin-card" style="margin-bottom:0">
         <p style="font-weight:800;font-size:15px;color:var(--ink);margin-bottom:16px">Pipeline Breakdown</p>
@@ -4699,8 +4701,9 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const coordinator=qs("#f-coord")?.value||"Danielle McCarter";
     const needs_attention=qs("#f-attention")?.checked||false;
     const leg_side=qs("#f-leg")?.value||"standard";
+    const deal_stage=MILESTONES[milestone]||"Deal Initiation";
     const prev=file;
-    const{error:saveErr}=await sb.from("files").update({address,closing_date,status,milestone,coordinator,needs_attention,leg_side}).eq("id",activeFileId);
+    const{error:saveErr}=await sb.from("files").update({address,closing_date,status,milestone,coordinator,needs_attention,leg_side,deal_stage}).eq("id",activeFileId);
     if(saveErr){
       // Fallback: a column may not exist yet — save the rest so nothing is lost
       await sb.from("files").update({address,closing_date,status,milestone,coordinator}).eq("id",activeFileId);
