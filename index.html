@@ -1464,6 +1464,7 @@ async function confirmBulkDelete(itemType){
       await sb.from("activity_log").delete().in("file_id",ids);
       await sb.from("internal_notes").delete().in("file_id",ids);
       await sb.from("client_requests").delete().in("file_id",ids);
+      await sb.from("notifications").delete().in("file_id",ids);
       const{error:delErr}=await sb.from("files").delete().in("id",ids);
       if(delErr){alert("Couldn't delete: "+delErr.message);return;}
     }else if(itemType==="clients"){
@@ -1478,6 +1479,7 @@ async function confirmBulkDelete(itemType){
           await sb.from("activity_log").delete().in("file_id",fileIds);
           await sb.from("internal_notes").delete().in("file_id",fileIds);
           await sb.from("client_requests").delete().in("file_id",fileIds);
+          await sb.from("notifications").delete().in("file_id",fileIds);
         }
         await sb.from("files").delete().eq("client_id",cid);
         await sb.from("messages").delete().eq("client_id",cid);
@@ -4616,6 +4618,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           await sb.from("activity_log").delete().in("file_id",fileIds);
           await sb.from("internal_notes").delete().in("file_id",fileIds);
           await sb.from("client_requests").delete().in("file_id",fileIds);
+          await sb.from("notifications").delete().in("file_id",fileIds);
         }
         // Delete all client-level related data
         await sb.from("files").delete().eq("client_id",cid);
