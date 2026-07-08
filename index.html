@@ -3233,6 +3233,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
               <p style="font-weight:700;font-size:14px;color:var(--ink)">${deal.address||"Address pending"}</p>
+              ${deal.leg_side==="ab"?`<span style="background:#E6F1FB;color:#0C447C;border:1px solid #85B7EB;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;flex-shrink:0">A/B Side</span>`:deal.leg_side==="bc"?`<span style="background:#FAEEDA;color:#854F0B;border:1px solid #EF9F27;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;flex-shrink:0">B/C Side</span>`:""}
               ${deal.needs_attention?`<span style="background:var(--orange-bg);color:var(--orange);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid var(--orange-border)">⚠️ Needs Attention</span>`:""}
             </div>
             <p style="font-size:12px;color:var(--muted)">${cl.name||""} ${deal.coordinator?`· ${deal.coordinator}`:""}</p>
