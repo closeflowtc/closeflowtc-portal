@@ -2096,6 +2096,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     const pendingTasks=allTasks.filter(t=>t.status!=="complete");
     const tcContacts=(contacts||[]).filter(c=>c.contact_type==="closeflow_team");
     const authSigners=(contacts||[]).filter(c=>c.contact_type==="authorized_signer");
+    const titleContacts=(contacts||[]).filter(c=>c.contact_type==="title_company");
     const tcDocs=(docs||[]).filter(d=>d.uploaded_by!=="client");
     const clientDocs=(docs||[]).filter(d=>d.uploaded_by==="client");
     const milestoneTimeline=MILESTONES.map((m,i)=>({m,i,done:i<f.milestone,curr:i===f.milestone}));
@@ -2386,6 +2387,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
   else if(tab==="contacts"){
     const cl=contacts||[];
     const cfTeam=cl.filter(c=>c.contact_type==="closeflow_team");
+    const titleCos=cl.filter(c=>c.contact_type==="title_company");
     const authSigners=cl.filter(c=>c.contact_type==="authorized_signer");
     const otherContacts=cl.filter(c=>c.contact_type==="other"||!c.contact_type);
     function contactCard(c,icon="🏢",bgColor="var(--teal-mist)"){
@@ -2425,6 +2427,19 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
           </div>
         </div>
         ${cfTeam.map(c=>contactCard(c,"👤","var(--teal-mist)")).join("")}
+      </div>
+      <!-- Title Company -->
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:8px;background:#E7F6F0;display:flex;align-items:center;justify-content:center;font-size:16px">🏛️</div>
+          <div>
+            <p style="font-weight:700;font-size:15px;color:var(--ink)">Title Company</p>
+            <p style="font-size:11px;color:var(--muted);margin-top:1px">The title company handling this closing</p>
+          </div>
+        </div>
+        ${titleCos.length===0
+          ?`<p style="font-size:13px;color:var(--muted)">The title company will be added here once it is assigned to your closing.</p>`
+          :titleCos.map(c=>contactCard(c,"🏛️","#E7F6F0")).join("")}
       </div>
       <!-- Authorized Signers -->
       <div class="card card-pad">
@@ -3935,6 +3950,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
             <p style="font-size:11px;color:var(--muted);margin-top:2px">${c.phone||""}${c.email?` · ${c.email}`:""}</p>
           </div>
           ${ctypeBadge(c.contact_type)}
+          <button data-coid="${c.id}" data-cname="${(c.name||'').replace(/"/g,'&quot;')}" data-crole="${(c.role||'').replace(/"/g,'&quot;')}" data-cphone="${(c.phone||'').replace(/"/g,'&quot;')}" data-cemail="${(c.email||'').replace(/"/g,'&quot;')}" data-ctype="${c.contact_type||'other'}" class="edit-contact btn btn-ghost btn-sm" style="padding:4px 10px">✎</button>
           <button data-coid="${c.id}" class="del-contact btn btn-danger btn-sm" style="padding:4px 10px">×</button>
         </div>`).join("")}
       </div>`;
@@ -4930,10 +4946,26 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const phone=qs("#c-phone")?.value.trim();const email=qs("#c-email")?.value.trim();
     const contact_type=qs("#c-type")?.value||"other";
     if(!role||!name)return;
-    btnLoad("add-contact",true,"Adding…");
-    await sb.from("contacts").insert({client_id:activeClientId,file_id:activeFileId,role,name,phone,email,contact_type});
+    if(window.EDITING_CONTACT){
+      btnLoad("add-contact",true,"Saving…");
+      await sb.from("contacts").update({role,name,phone,email,contact_type}).eq("id",window.EDITING_CONTACT);
+      window.EDITING_CONTACT=null;
+    }else{
+      btnLoad("add-contact",true,"Adding…");
+      await sb.from("contacts").insert({client_id:activeClientId,file_id:activeFileId,role,name,phone,email,contact_type});
+    }
     await renderAdmin(activeClientId,activeFileId,"contacts");
   });
+  qsa(".edit-contact").forEach(btn=>btn.addEventListener("click",()=>{
+    window.EDITING_CONTACT=btn.dataset.coid;
+    const set=(id,v)=>{const el=qs(id);if(el)el.value=v||"";};
+    set("#c-name",btn.dataset.cname);set("#c-role",btn.dataset.crole);
+    set("#c-phone",btn.dataset.cphone);set("#c-email",btn.dataset.cemail);
+    set("#c-type",btn.dataset.ctype);
+    const addBtn=qs("#add-contact");if(addBtn)addBtn.textContent="Save Changes";
+    qs("#c-name")?.scrollIntoView({behavior:"smooth",block:"center"});
+    qs("#c-name")?.focus();
+  }));
   qsa(".del-contact").forEach(btn=>btn.addEventListener("click",async()=>{await sb.from("contacts").delete().eq("id",btn.dataset.coid);await renderAdmin(activeClientId,activeFileId,"contacts");}));
   on("#add-doc","click",async()=>{
     const name=qs("#doc-name")?.value.trim();const url=qs("#doc-url")?.value.trim();
