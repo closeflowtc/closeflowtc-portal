@@ -2099,7 +2099,8 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     const titleContacts=(contacts||[]).filter(c=>c.contact_type==="title_company");
     const tcDocs=(docs||[]).filter(d=>d.uploaded_by!=="client");
     const clientDocs=(docs||[]).filter(d=>d.uploaded_by==="client");
-    const milestoneTimeline=MILESTONES.map((m,i)=>({m,i,done:i<f.milestone,curr:i===f.milestone}));
+    const isClosed=(f.deal_stage==="Closed/Recorded")||(f.milestone>=MILESTONES.length-1)||(f.status==="Closed");
+    const milestoneTimeline=MILESTONES.map((m,i)=>({m,i,done:isClosed?true:i<f.milestone,curr:isClosed?i===MILESTONES.length-1:i===f.milestone}));
 
     content=`
     <!-- PERSONAL GREETING + PROGRESS -->
@@ -2112,7 +2113,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
           <div>
             <p style="font-size:18px;font-weight:800;color:var(--ink);line-height:1.2">${partOfDay}, ${firstName} 👋</p>
-            <p style="font-size:13px;color:var(--muted);margin-top:2px">Here's where your closing stands today.</p>
+            <p style="font-size:13px;color:var(--muted);margin-top:2px">${isClosed?"This transaction has closed. Congratulations! 🎉":"Here's where your closing stands today."}</p>
           </div>
           <div style="text-align:right;flex-shrink:0">
             <p style="font-size:26px;font-weight:900;color:var(--teal);line-height:1">${pct}%</p>
@@ -2140,10 +2141,10 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
         <!-- Target Close Date -->
         <div class="card card-pad" style="background:linear-gradient(160deg,#1C2B32,#2D4A5A)">
-          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Target Close Date</p>
+          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">${isClosed?"Closing Date":"Target Close Date"}</p>
           ${f.closing_date
             ?`<p style="font-size:22px;font-weight:900;color:#fff;line-height:1.2;margin-bottom:6px">${fmtDate(f.closing_date)}</p>
-               <p style="font-size:13px;font-weight:700;color:${daysLeft<0?"#FC8181":daysLeft<=7?"#F6AD55":"var(--teal-light)"}">${daysLeft<0?Math.abs(daysLeft)+" days overdue":daysLeft===0?"Closing today":daysLeft+" days to close"}</p>`
+               ${isClosed?`<p style="font-size:13px;font-weight:700;color:#68D391">✓ Closed &amp; Recorded</p>`:`<p style="font-size:13px;font-weight:700;color:${daysLeft<0?"#FC8181":daysLeft<=7?"#F6AD55":"var(--teal-light)"}">${daysLeft<0?Math.abs(daysLeft)+" days overdue":daysLeft===0?"Closing today":daysLeft+" days to close"}</p>`}`
             :`<p style="font-size:18px;font-weight:900;color:rgba(255,255,255,.4);margin-bottom:4px">TBD</p>
                <p style="font-size:12px;color:rgba(255,255,255,.3)">Date not set yet</p>`}
         </div>
@@ -2438,7 +2439,9 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
           </div>
         </div>
         ${titleCos.length===0
-          ?`<p style="font-size:13px;color:var(--muted)">The title company will be added here once it is assigned to your closing.</p>`
+          ?(f.title_company
+            ?`<div class="contact-card"><div style="display:flex;align-items:center;gap:12px"><div style="width:38px;height:38px;border-radius:10px;background:#E7F6F0;display:flex;align-items:center;justify-content:center;font-size:16px">🏛️</div><div><p style="font-weight:700;font-size:14px;color:var(--ink)">${f.title_company}</p><p style="font-size:11px;color:var(--muted)">Handling this closing</p></div></div></div>`
+            :`<p style="font-size:13px;color:var(--muted)">The title company will be added here once it is assigned to your closing.</p>`)
           :titleCos.map(c=>contactCard(c,"🏛️","#E7F6F0")).join("")}
       </div>
       <!-- Authorized Signers -->
@@ -3777,7 +3780,6 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           {label:"Time Zone",val:client.time_zone},
           {label:"Communication Preference",val:client.comm_preference},
           {label:"Active Markets",val:client.market_radius},
-          {label:"Preferred Title / Attorney",val:client.preferred_title||"None — using CloseFlow TC's partners"},
           {label:"Mailing Address",val:client.address},
         ].map(r=>`<div style="background:var(--main-bg);border-radius:10px;padding:10px 14px;border:1px solid var(--border)">
           <p style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">${r.label}</p>
@@ -3797,6 +3799,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div class="input-group"><label class="input-label">Property Address</label><input class="dark-input" id="f-address" value="${f.address||""}" placeholder="123 Main St"/></div>
         <div class="input-group"><label class="input-label">Closing Date</label><input class="dark-input" id="f-closing" type="date" value="${f.closing_date||""}"/></div>
+        <div class="input-group"><label class="input-label">Title Company <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(for this property)</span></label><input class="dark-input" id="f-title-company" value="${(f.title_company||"").replace(/"/g,"&quot;")}" placeholder="e.g. Marina Title (FL)"/></div>
         <div class="input-group"><label class="input-label">Status</label><select class="dark-input" id="f-status">${FILE_STATUSES.map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
         <div class="input-group"><label class="input-label">Milestone</label><select class="dark-input" id="f-milestone">${MILESTONES.map((m,i)=>`<option value="${i}" ${f.milestone===i?"selected":""}>${i+1}. ${m}</option>`).join("")}</select></div>
         <div class="input-group"><label class="input-label">Deal Leg <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(for double closes)</span></label><select class="dark-input" id="f-leg"><option value="standard" ${(!f.leg_side||f.leg_side==="standard")?"selected":""}>Standard (single deal)</option><option value="ab" ${f.leg_side==="ab"?"selected":""}>A/B Side · Acquisition (client buys)</option><option value="bc" ${f.leg_side==="bc"?"selected":""}>B/C Side · Disposition (client sells)</option></select></div>
@@ -4236,7 +4239,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
               </select>
             </div>
             <div class="input-group"><label class="input-label">Comm Preference</label><input class="dark-input" id="edit-client-comm" value="${client.comm_preference||""}"/></div>
-            <div class="input-group"><label class="input-label">Preferred Title</label><input class="dark-input" id="edit-client-title" value="${client.preferred_title||""}"/></div>
+
           </div>
           <div id="edit-client-msg" style="display:none;font-size:12px;margin-top:8px;padding:8px 12px;border-radius:8px"></div>
           <div style="display:flex;gap:8px;margin-top:12px">
@@ -4536,7 +4539,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const market_radius=qs("#edit-client-markets")?.value.trim();
     const time_zone=qs("#edit-client-tz")?.value;
     const comm_preference=qs("#edit-client-comm")?.value.trim();
-    const preferred_title=qs("#edit-client-title")?.value.trim();
+    const preferred_title=client.preferred_title||"";
     const msg=qs("#edit-client-msg");
     if(!name||!email){if(msg){msg.style.display="block";msg.style.background="#FFF5F5";msg.style.color="var(--danger)";msg.textContent="Name and email are required.";}return;}
     await sb.from("clients").update({name,email,phone,business_name,market_radius,time_zone,comm_preference,preferred_title}).eq("id",activeClientId);
@@ -4718,9 +4721,10 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     const coordinator=qs("#f-coord")?.value||"Danielle McCarter";
     const needs_attention=qs("#f-attention")?.checked||false;
     const leg_side=qs("#f-leg")?.value||"standard";
+    const title_company=qs("#f-title-company")?.value.trim()||"";
     const deal_stage=MILESTONES[milestone]||"Deal Initiation";
     const prev=file;
-    const{error:saveErr}=await sb.from("files").update({address,closing_date,status,milestone,coordinator,needs_attention,leg_side,deal_stage}).eq("id",activeFileId);
+    const{error:saveErr}=await sb.from("files").update({address,closing_date,status,milestone,coordinator,needs_attention,leg_side,deal_stage,title_company}).eq("id",activeFileId);
     if(saveErr){
       // Fallback: a column may not exist yet — save the rest so nothing is lost
       await sb.from("files").update({address,closing_date,status,milestone,coordinator}).eq("id",activeFileId);
