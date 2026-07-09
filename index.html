@@ -513,6 +513,58 @@ document.addEventListener("click",e=>{
 });
 // Open a document: storage-backed files get a fresh signed URL (private bucket);
 // plain links (e.g. Google Drive) open directly.
+// Help Center content + interactions
+function helpTopic(icon,title,bodyHtml){
+  return `<div class="help-topic" style="background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden">
+    <div onclick="const t=this.parentElement;t.classList.toggle('open');const b=t.querySelector('.help-body');const c=this.querySelector('.hchev');const o=t.classList.contains('open');if(b)b.style.display=o?'block':'none';if(c)c.textContent=o?'▾':'▸';" style="display:flex;align-items:center;gap:12px;padding:15px 16px;cursor:pointer">
+      <span style="width:34px;height:34px;border-radius:9px;background:var(--teal-mist);color:var(--teal-dark);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${icon}</span>
+      <span style="flex:1;font-weight:700;font-size:15px;color:var(--ink)">${title}</span>
+      <span class="hchev" style="color:var(--muted);font-size:14px">▸</span>
+    </div>
+    <div class="help-body" style="display:none;padding:4px 18px 18px 62px;font-size:14px;color:var(--ink-soft,#3E4E56);line-height:1.6">${bodyHtml}</div>
+  </div>`;
+}
+function helpTopics(){
+  const ol=(items)=>`<ol style="margin:6px 0 10px 18px;padding:0">${items.map(i=>`<li style="margin-bottom:7px">${i}</li>`).join("")}</ol>`;
+  const call=(txt)=>`<div style="background:var(--teal-mist);border-left:3px solid var(--teal);border-radius:0 8px 8px 0;padding:10px 13px;margin:10px 0;font-size:13px">${txt}</div>`;
+  const abPill=`<span style="background:#E6F1FB;color:#0C447C;border:1px solid #85B7EB;font-weight:800;font-size:11px;padding:1px 8px;border-radius:20px">A/B Side</span>`;
+  const bcPill=`<span style="background:#FAEEDA;color:#854F0B;border:1px solid #EF9F27;font-weight:800;font-size:11px;padding:1px 8px;border-radius:20px">B/C Side</span>`;
+  return [
+    `<p style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--teal-dark);margin:14px 0 10px">Getting Started</p>`,
+    helpTopic("🔑","How do I log in?",`<p>Your coordinator sends you a link along with your login details.</p>${ol(["Open the link on your phone, tablet, or computer.","Type in your email address and password.","Tap the <strong>Log In</strong> button."])}${call("The first time you log in, the portal offers a short guided tour. We recommend taking it — it only takes a minute.")}`),
+    helpTopic("🏠","Understanding your home screen",`<p>Your home screen greets you by name and shows a <strong>progress bar</strong> that fills as your closing moves forward. The higher the percentage, the closer you are to closing. Below it is a summary of your property, current step, dates, and documents.</p>`),
+    helpTopic("🏘️","Switching between your properties",`<p>If we handle more than one property for you, use the bar near the top showing the property address.</p>${ol(["Tap the property address at the top.","A list of your properties opens.","Choose the one you want to view."])}${call(`Some transactions have two parts — a ${abPill} (buying) and a ${bcPill} (selling). If yours has both, they appear separately with these colored labels.`)}`),
+    `<p style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--teal-dark);margin:20px 0 10px">Using the Portal</p>`,
+    helpTopic("📄","Viewing and opening documents",`<p>Tap the <strong>Documents</strong> tab to see every file for your property.</p>${ol(["Tap the name of the document you want.","It opens in a new window.","Read it there, or save it to your device."])}`),
+    helpTopic("📤","Uploading a document to us",`<p>You can send us a document right from the portal.</p>${ol(["Go to <strong>Documents</strong>, or tap <strong>Attach a Document</strong> on your home screen.","Give the document a name.","Choose the file — a PDF, Word file, or photo all work.","Tap <strong>Submit</strong>. Your coordinator is notified right away."])}${call("Files can be up to 20 MB in size.")}`),
+    helpTopic("📅","Seeing your key dates",`<p>The <strong>Key Dates</strong> tab shows the important deadlines for your closing. Next to each date is an <strong>Add to Calendar</strong> button, so you can save it to your own calendar with one tap.</p>`),
+    helpTopic("✅","Checking your tasks",`<p>The <strong>Tasks</strong> tab shows anything we may need from you. If there's a task for you, it appears here, and you can check it off once it's done.</p>`),
+    helpTopic("🏢","Finding your contacts",`<p>The <strong>Contacts</strong> tab shows the people involved in your closing — your CloseFlow TC coordinator and the title company handling your transaction. Tap their phone number or email to reach them directly.</p>`),
+    helpTopic("💬","Sending a message",`<p>The <strong>Messages</strong> tab lets you write to your coordinator right inside the portal. Type your message and send it — we'll be notified.</p>`),
+    `<p style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--teal-dark);margin:20px 0 10px">Questions &amp; Answers</p>`,
+    helpTopic("❓","Why do I see the same address twice?",`<p>If your transaction is a "double close," you're both buying and selling the same property. It has two parts: a ${abPill} (buying) and a ${bcPill} (selling), each with its own details, so they're listed separately.</p>`),
+    helpTopic("❓","Is my information secure?",`<p>Yes. The portal is private and secure. Only you and your CloseFlow TC team can see your information, and your documents open through secure, temporary links.</p>`),
+    helpTopic("❓","What file types can I upload?",`<p>You can upload PDFs, Word documents, and photos (like a picture from your phone), up to 20 MB each.</p>`),
+    helpTopic("❓","I forgot my password. What do I do?",`<p>No problem — just message your coordinator or call us, and we'll help you back in right away.</p>`),
+  ].join("");
+}
+function toggleHelp(el){el.classList.toggle("open");}
+function filterHelp(q){
+  const query=(q||"").trim().toLowerCase();
+  const topics=document.querySelectorAll("#help-list .help-topic");
+  const labels=document.querySelectorAll("#help-list p");
+  let any=false;
+  topics.forEach(tp=>{
+    const match=!query||tp.textContent.toLowerCase().includes(query);
+    tp.style.display=match?"":"none";
+    if(match)any=true;
+    const body=tp.querySelector(".help-body");const chev=tp.querySelector(".hchev");
+    if(query&&match){tp.classList.add("open");if(body)body.style.display="block";if(chev)chev.textContent="▾";}
+    else if(!query){tp.classList.remove("open");if(body)body.style.display="none";if(chev)chev.textContent="▸";}
+  });
+  labels.forEach(l=>{l.style.display=query?"none":"";});
+  const none=document.getElementById("help-none");if(none)none.style.display=any?"none":"block";
+}
 // Sort files so double-close legs sit next to each other (A/B then B/C, grouped by address)
 function sortFilesGrouped(arr){
   const list=(arr||[]).slice();
@@ -2070,6 +2122,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     {id:"milestones",icon:"🎯",label:"Milestones"},
     {id:"documents",icon:"📁",label:"Documents"},
     {id:"messages",icon:"💬",label:"Messages"},
+    {id:"help",icon:"❔",label:"Help"},
     {id:"account",icon:"👤",label:"My Account"},
   ];
 
@@ -2548,6 +2601,30 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       </div>
     </div>`;
   }
+
+  else if(tab==="help"){
+    body.innerHTML=`
+    <div style="max-width:680px">
+      <div style="background:linear-gradient(135deg,var(--teal),var(--teal-dark));border-radius:16px;padding:24px 22px;color:#fff;margin-bottom:18px">
+        <p style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;opacity:.85;margin-bottom:8px">Help Center</p>
+        <p style="font-size:22px;font-weight:900;margin-bottom:6px">How can we help?</p>
+        <p style="font-size:14px;opacity:.92;line-height:1.5">Everything you need to know about using your portal, in simple steps. Search below, or tap a topic to open it.</p>
+        <div style="position:relative;margin-top:16px">
+          <input id="help-search" placeholder="Search for help (e.g. documents, dates)..." style="width:100%;padding:13px 14px;border:none;border-radius:11px;font-size:15px;font-family:inherit;color:var(--ink);outline:none" oninput="filterHelp(this.value)"/>
+        </div>
+      </div>
+      <div id="help-list">
+        ${helpTopics()}
+      </div>
+      <div id="help-none" style="display:none;text-align:center;color:var(--muted);padding:24px;font-size:14px">No topics match your search. Try a different word, or message your coordinator.</div>
+      <div style="background:var(--ink);border-radius:14px;padding:22px;text-align:center;color:#fff;margin-top:18px">
+        <p style="font-size:16px;font-weight:800;margin-bottom:8px">Still need help?</p>
+        <p style="font-size:14px;opacity:.9;margin-bottom:4px">Use the <strong>Messages</strong> tab to write to your coordinator,</p>
+        <p style="font-size:14px;opacity:.9">or call us at <a href="tel:+13305834443" style="color:var(--teal-light);font-weight:700;text-decoration:none">(330) 583-4443</a>.</p>
+      </div>
+    </div>`;
+  }
+
 
   else if(tab==="account"){
     const c=client||{};
