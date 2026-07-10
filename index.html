@@ -532,6 +532,48 @@ function toggleHelpTopic(head){
   body.style.display=isOpen?"none":"block";
   if(chev)chev.textContent=isOpen?"▸":"▾";
 }
+// Admin Help Center content
+function adminHelpTopics(){
+  const ol=(items)=>`<ol style="margin:6px 0 10px 18px;padding:0">${items.map(i=>`<li style="margin-bottom:7px">${i}</li>`).join("")}</ol>`;
+  const call=(txt)=>`<div style="background:var(--teal-mist);border-left:3px solid var(--teal);border-radius:0 8px 8px 0;padding:10px 13px;margin:10px 0;font-size:13px">${txt}</div>`;
+  const abPill=`<span style="background:#E6F1FB;color:#0C447C;border:1px solid #85B7EB;font-weight:800;font-size:11px;padding:1px 8px;border-radius:20px">A/B Side</span>`;
+  const bcPill=`<span style="background:#FAEEDA;color:#854F0B;border:1px solid #EF9F27;font-weight:800;font-size:11px;padding:1px 8px;border-radius:20px">B/C Side</span>`;
+  const lbl=(t)=>`<p style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--teal-dark);margin:18px 0 10px">${t}</p>`;
+  return [
+    lbl("Getting Around"),
+    helpTopic("⊞","The Dashboard",`<p>The dashboard is your home base. The stat cards across the top — Active Deals, In Escrow, Closing This Week, Needs Attention, Tasks Due, Pending Requests — are all clickable and jump to a filtered view. Below are Deals by Status, Upcoming Key Dates, Tasks Overview, and Team Activity.</p>`),
+    helpTopic("🔍","Finding a client",`<p>Two ways:</p>${ol(["Use the <strong>search bar</strong> at the top — type a name, email, or business and pick from the dropdown.","Or open the <strong>Clients</strong> page for a searchable card view of everyone."])}`),
+    helpTopic("👁️","Viewing as the client",`<p>Use <strong>View as Client</strong> to see a client's portal exactly as they see it, read-only. This is the best way to confirm everything looks right before they log in.</p>`),
+    lbl("Setting Up a Property File"),
+    helpTopic("📋","Editing file details",`<p>Open a client, and you're on their File tab. In File Details you set:</p>${ol(["<strong>Address</strong>, <strong>Closing Date</strong>, <strong>Status</strong>, and <strong>Milestone</strong>.","<strong>Title Company</strong> for that property.","<strong>Deal Leg</strong> (Standard, A/B, or B/C).","<strong>Coordinator</strong> and the <strong>Needs Attention</strong> flag."])}${call("The <strong>Milestone</strong> you choose drives the deal's pipeline stage automatically. Always set the Milestone as a deal moves forward — it keeps the client's progress bar and the Deals pipeline in sync.")}`),
+    helpTopic("🎯","Milestones & pipeline stages",`<p>There are eight stages, used for both the client progress bar and the Deals pipeline:</p>${ol(["Deal Initiation","Open Escrow Pending","Escrow Opened/EMD Pending","EMD Paid","Title Commitment","HUD/Alta","Clear to Close","Closed/Recorded"])}<p>Set the Milestone on the File tab; the Deals page can then be filtered by any stage.</p>`),
+    lbl("Double Closes"),
+    helpTopic("🔀","How to set up a double close",`<p>A double close is when the client both buys and sells the same property. Each leg is a <strong>separate property entry</strong> at the same address:</p><p>${abPill} — client buys, closes first. &nbsp; ${bcPill} — client sells, closes after A/B funds.</p>${ol(["Open (or create) the property entry, set <strong>Deal Leg = A/B Side</strong>, fill its details, Save.","Click <strong>+ Add Property</strong>, enter the same address, set <strong>Deal Leg = B/C Side</strong>, fill its own details.","Each leg gets its own status, closing date, title company, contacts, and documents. Do A/B fully before B/C."])}${call("If the second side isn't ready (e.g. the end buyer is unknown), set up only the A/B side for now and add the B/C entry later.")}`),
+    lbl("Contacts, Documents & Tasks"),
+    helpTopic("👥","Adding & editing contacts",`<p>On a property's Contacts tab, add people by type: CloseFlow TC Team, Seller, Buyer, Title Company, Authorized Signer, or Other. Use the <strong>✎ edit</strong> button to update a contact in place.</p>${call("Clients see their coordinator and the Title Company. Seller and Buyer contacts stay internal (admin-only).")}`),
+    helpTopic("📄","Documents",`<p>Attach documents with the <strong>Attach Document</strong> button. Files are stored privately and open through secure, expiring links. Clients can upload too, and you're notified. For double closes, upload each leg's documents to that leg's entry.</p>`),
+    helpTopic("✅","Tasks, dates & messages",`${ol(["<strong>Tasks</strong> — assign action items; clients check them off and can upload against them.","<strong>Key Dates</strong> — add deadlines; clients get an Add to Calendar button.","<strong>Messages</strong> — read and reply. Clients are auto-notified of status changes, new dates, and new documents."])}`),
+    lbl("Deals & Housekeeping"),
+    helpTopic("🗂️","The Deals page & archiving",`<p>The Deals page lists every deal, filterable by stage (or A/B / B/C, Needs Attention, In Escrow, Archived). Each card shows client, address, stage, and an A/B or B/C chip where relevant.</p><p>To tidy finished deals, select them and use <strong>Bulk Archive</strong>. Archived deals leave the active list but stay viewable with the Archived filter. Archiving doesn't delete anything.</p>`),
+    helpTopic("⬡","Invite codes & onboarding",`<p>Generate and email invite codes from the <strong>Invite Codes</strong> page so new clients can register securely.</p>`),
+  ].join("");
+}
+function filterAdminHelp(q){
+  const query=(q||"").trim().toLowerCase();
+  const topics=document.querySelectorAll("#ahelp-list .help-topic");
+  const labels=document.querySelectorAll("#ahelp-list > p");
+  let any=false;
+  topics.forEach(tp=>{
+    const match=!query||tp.textContent.toLowerCase().includes(query);
+    tp.style.display=match?"":"none";
+    if(match)any=true;
+    const body=tp.querySelector(".help-body");const chev=tp.querySelector(".hchev");
+    if(query&&match){if(body)body.style.display="block";if(chev)chev.textContent="▾";}
+    else if(!query){if(body)body.style.display="none";if(chev)chev.textContent="▸";}
+  });
+  labels.forEach(l=>{l.style.display=query?"none":"";});
+  const none=document.getElementById("ahelp-none");if(none)none.style.display=any?"none":"block";
+}
 function helpTopics(){
   const ol=(items)=>`<ol style="margin:6px 0 10px 18px;padding:0">${items.map(i=>`<li style="margin-bottom:7px">${i}</li>`).join("")}</ol>`;
   const call=(txt)=>`<div style="background:var(--teal-mist);border-left:3px solid var(--teal);border-radius:0 8px 8px 0;padding:10px 13px;margin:10px 0;font-size:13px">${txt}</div>`;
@@ -3051,8 +3093,8 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   _allClients=allClients; // sync to global for modal access
 
   // Determine active client
-  const isGlobalView=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"].includes(tab);
-  const GLOBAL_TABS_ARR=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+  const isGlobalView=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","admin-help","invite-codes","settings"].includes(tab);
+  const GLOBAL_TABS_ARR=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","admin-help","invite-codes","settings"];
   const activeClientId=selClientId||(allClients[0]?.id)||null;
   let clientFiles=[];
   if(activeClientId&&!isGlobalView){
@@ -3759,6 +3801,24 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     </div>`;
   }
 
+  else if(tab==="admin-help"){
+    mainContent=`
+    <div class="admin-card" style="max-width:760px;margin:0 auto">
+      <div style="background:linear-gradient(135deg,var(--teal),var(--teal-dark));border-radius:16px;padding:24px 22px;color:#fff;margin-bottom:18px">
+        <p style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;opacity:.85;margin-bottom:8px">Team Guide</p>
+        <p style="font-size:22px;font-weight:900;margin-bottom:6px">How to use the portal</p>
+        <p style="font-size:14px;opacity:.92;line-height:1.5">A complete reference for managing clients, deals, and documents. Search below, or tap a topic to open it.</p>
+        <div style="position:relative;margin-top:16px">
+          <input id="ahelp-search" placeholder="Search the guide (e.g. double close, milestone)..." style="width:100%;padding:13px 14px;border:none;border-radius:11px;font-size:15px;font-family:inherit;color:var(--ink);outline:none" oninput="filterAdminHelp(this.value)"/>
+        </div>
+      </div>
+      <div id="ahelp-list">
+        ${adminHelpTopics()}
+      </div>
+      <div id="ahelp-none" style="display:none;text-align:center;color:var(--muted);padding:24px;font-size:14px">No topics match your search.</div>
+    </div>`;
+  }
+
     else if(tab==="team"){
     const PERMS=[
       {key:"view_clients",label:"View Clients",desc:"Can see client list and files"},
@@ -4230,7 +4290,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     <div style="width:36px;height:36px;border-radius:10px;background:${adminBellBg};border:1.5px solid ${adminBellBorder};display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s" onmouseover="this.style.background='var(--teal-mist)'" onmouseout="this.style.background='${adminBellBg}'">🔔</div>
     ${adminBellBadge}
   </div>`;
-  const GLOBAL_TABS=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+  const GLOBAL_TABS=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","admin-help","invite-codes","settings"];
   const isGlobalTab=GLOBAL_TABS.includes(tab)||tab==="overview";
   const adminNavItems=[
     {id:"overview",icon:"⊞",label:"Dashboard",section:"main"},
@@ -4245,6 +4305,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     {id:"issues",icon:"🐞",label:"Issue Reports",section:"tools"},
     {id:"team",icon:"⊕",label:"Team",section:"tools"},
     {id:"feedback",icon:"★",label:"Feedback",section:"tools"},
+    {id:"admin-help",icon:"❔",label:"Help & Guide",section:"tools"},
     ...(isSuperAdmin?[{id:"invite-codes",icon:"⬡",label:"Invite Codes",section:"tools"},{id:"settings",icon:"⚙",label:"Settings",section:"tools"}]:[]),
   ];
 
@@ -4772,7 +4833,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   }
   qsa("[data-nav]").forEach(btn=>btn.addEventListener("click",()=>{
     const t=btn.dataset.nav;
-    const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+    const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","admin-help","invite-codes","settings"];
     if(globalTabs.includes(t))renderAdmin(null,null,t);
     else renderAdmin(null,null,"overview");
   }));
@@ -4973,7 +5034,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
           await sb.from("notifications").update({is_read:true}).eq("id",nid);
           panel.remove();
           // Global tabs go straight there; client tabs need cid
-          const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","invite-codes","settings"];
+          const globalTabs=["overview","clients","deals","tasks-all","requests","calendar","contacts-all","messages-all","reports","issues","team","feedback","admin-help","invite-codes","settings"];
           if(globalTabs.includes(dest)){
             renderAdmin(null,null,dest);
           }else if(cid){
