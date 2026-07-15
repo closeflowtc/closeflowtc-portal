@@ -449,7 +449,14 @@ const TOUR_STEPS=[
     tab:"documents",icon:"📁",
     title:"Your Documents",
     body:"All the important paperwork for your closing is stored here — contracts, title documents, closing statements, and more. Your CloseFlow TC coordinator uploads these for you as they become available. You can also upload documents here if your coordinator asks you to provide something.",
-    action:"Click the green 'Upload Document' button at the top to upload a file. You will need a Google Drive link to your document. If you are unsure how to do this, message your CloseFlow TC coordinator and they will walk you through it.",
+    action:"Click the green 'Upload Document' button at the top to add a file. You can choose a file straight from your computer, phone, or tablet — or paste a Google Drive link if you prefer. If you are unsure, message your CloseFlow TC coordinator and they will walk you through it.",
+    video:null,
+  },
+  {
+    tab:"help",icon:"❔",
+    title:"Help Is Always Here",
+    body:"If you ever forget how something works, the Help tab has simple, step by step answers for everything in this portal — from uploading a document to reading your progress bar. You can search for a topic or just tap through the list. You never need to remember any of this tour.",
+    action:"Take a quick look at the Help tab. Try typing a word like 'documents' in the search box to see how it finds the right answer for you.",
     video:null,
   },
   {
@@ -1183,6 +1190,169 @@ function showGlobalAddTaskModal(){
 }
 
 // ── GLOBAL UPLOAD DOCUMENT MODAL ─────────────────────────────────────
+// ── AUTO-CATEGORIZE A DOCUMENT BY ITS FILENAME ───────────────────────────────
+// Closing-tuned category set. Anything that matches nothing falls through to General.
+function categorizeByFilename(filename){
+  const n=(filename||"").toLowerCase();
+  // Wire instructions — check first (most specific / highest stakes)
+  if(/\bwir(e|ing)\b|wire.?instruction|wire.?transfer|\bach\b|bank.?instruction/.test(n))return"Wire";
+  // HUD / closing statements / settlement
+  if(/\bhud\b|\balta\b|settlement|closing.?statement|closing.?disclosure|\bcd\b|disbursement|final.?figures/.test(n))return"HUD/Closing";
+  // Title docs
+  if(/title|commitment|\bt&e\b|title.?search|preliminary|prelim|policy|endorsement|schedule.?[ab]|legal.?description|vesting/.test(n))return"Title";
+  // Contracts / agreements
+  if(/contract|agreement|\bpsa\b|purchase|assignment|amendment|addend|earnest|\bemd\b|option|disclosure/.test(n))return"Contracts";
+  return"General";
+}
+const BULK_CATEGORIES=["Contracts","Title","HUD/Closing","Wire","General"];
+// Clean a filename into a friendly document name: strip extension, swap _/- for spaces, tidy.
+function prettyDocName(filename){
+  let base=(filename||"").replace(/\.[^.]+$/,"");
+  base=base.replace(/[_]+/g," ").replace(/\s{2,}/g," ").trim();
+  return base||filename||"Document";
+}
+
+// ── BULK UPLOAD MODAL ────────────────────────────────────────────────────────
+// Drop many files at once; each is auto-named from its filename and auto-sorted
+// into a closing category. No per-file typing required.
+function showBulkUploadModal(preClientId="",preFileId=""){
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
+  overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:30px;max-width:600px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease;max-height:90vh;display:flex;flex-direction:column">
+    <div style="margin-bottom:18px;flex-shrink:0">
+      <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:6px">📚 Bulk Upload Documents</h3>
+      <p style="font-size:13px;color:var(--muted)">Drop in as many files as you like. Each is named from its filename and sorted into a category automatically — no typing needed. You can tweak any category before uploading.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1;min-height:0;padding-right:2px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Client <span style="color:var(--danger)">*</span></label>
+          <select id="bulk-client" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;background:#fff">
+            <option value="">Select a client...</option>
+            ${_allClients.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Deal / Property <span style="color:var(--danger)">*</span></label>
+          <select id="bulk-file" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;background:#fff">
+            <option value="">Select a client first...</option>
+          </select>
+        </div>
+      </div>
+      <!-- Drop zone -->
+      <label id="bulk-drop" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:28px;border:2px dashed var(--border);border-radius:12px;cursor:pointer;background:var(--main-bg);transition:all .2s" onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--border)'">
+        <span style="font-size:30px">📚</span>
+        <span style="font-size:13px;font-weight:600;color:var(--ink)">Click to choose files, or drag &amp; drop here</span>
+        <span style="font-size:11px;color:var(--muted)">PDF, Word, Excel, JPG, PNG — up to 20MB each</span>
+        <input id="bulk-file-input" type="file" multiple style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.txt"/>
+      </label>
+      <!-- Staged file list -->
+      <div id="bulk-list"></div>
+    </div>
+    <div id="bulk-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;flex-shrink:0"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-shrink:0">
+      <button id="cancel-bulk" class="btn btn-ghost">Cancel</button>
+      <button id="save-bulk" class="btn btn-primary" disabled style="opacity:.5">Upload 0 files</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  let staged=[]; // {file, name, category}
+
+  const fileSel=overlay.querySelector("#bulk-file");
+  const clientSel=overlay.querySelector("#bulk-client");
+  const saveBtn=overlay.querySelector("#save-bulk");
+  const listEl=overlay.querySelector("#bulk-list");
+  const statusEl=overlay.querySelector("#bulk-status");
+
+  async function loadFilesFor(cid,selFileId=""){
+    if(!cid){fileSel.innerHTML=`<option value="">Select a client first...</option>`;return;}
+    const{data:files}=await sb.from("files").select("id,address").eq("client_id",cid).order("created_at");
+    fileSel.innerHTML=`<option value="">Select a deal...</option>`+(files||[]).map(f=>`<option value="${f.id}" ${f.id===selFileId?"selected":""}>${f.address||"Address pending"}</option>`).join("");
+  }
+  if(preClientId){clientSel.value=preClientId;loadFilesFor(preClientId,preFileId);}
+  clientSel.addEventListener("change",e=>loadFilesFor(e.target.value));
+
+  function renderList(){
+    saveBtn.textContent=`Upload ${staged.length} file${staged.length===1?"":"s"}`;
+    saveBtn.disabled=staged.length===0;
+    saveBtn.style.opacity=staged.length===0?".5":"1";
+    if(staged.length===0){listEl.innerHTML="";return;}
+    listEl.innerHTML=`<p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:4px 0 8px">${staged.length} file${staged.length===1?"":"s"} ready — categories auto-detected</p>`+
+      staged.map((s,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--white)">
+        <span style="font-size:16px;flex-shrink:0">📄</span>
+        <div style="flex:1;min-width:0">
+          <p style="font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</p>
+          <p style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.file.name} · ${(s.file.size/1024/1024).toFixed(1)}MB</p>
+        </div>
+        <select class="bulk-cat-sel" data-idx="${i}" style="flex-shrink:0;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;background:#fff;color:var(--teal-dark)">
+          ${BULK_CATEGORIES.map(c=>`<option value="${c}" ${c===s.category?"selected":""}>${c}</option>`).join("")}
+        </select>
+        <button class="bulk-remove" data-idx="${i}" style="flex-shrink:0;background:#FFF5F5;color:var(--danger);border:1px solid #FED7D7;border-radius:8px;padding:4px 10px;font-size:14px;cursor:pointer;line-height:1">×</button>
+      </div>`).join("");
+    listEl.querySelectorAll(".bulk-cat-sel").forEach(sel=>sel.addEventListener("change",e=>{staged[+e.target.dataset.idx].category=e.target.value;}));
+    listEl.querySelectorAll(".bulk-remove").forEach(btn=>btn.addEventListener("click",e=>{staged.splice(+e.target.dataset.idx,1);renderList();}));
+  }
+
+  function addFiles(fileList){
+    for(const file of fileList){
+      staged.push({file,name:prettyDocName(file.name),category:categorizeByFilename(file.name)});
+    }
+    renderList();
+  }
+
+  const fileInput=overlay.querySelector("#bulk-file-input");
+  fileInput.addEventListener("change",e=>{if(e.target.files?.length)addFiles(e.target.files);fileInput.value="";});
+  const drop=overlay.querySelector("#bulk-drop");
+  ["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor="var(--teal)";drop.style.background="var(--teal-mist)";}));
+  ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor="var(--border)";drop.style.background="var(--main-bg)";}));
+  drop.addEventListener("drop",e=>{if(e.dataTransfer?.files?.length)addFiles(e.dataTransfer.files);});
+
+  overlay.querySelector("#cancel-bulk").addEventListener("click",()=>overlay.remove());
+  saveBtn.addEventListener("click",async()=>{
+    const clientId=clientSel.value;
+    const fileId=fileSel.value;
+    if(!clientId||!fileId){statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";statusEl.textContent="Please select a client and a deal first.";return;}
+    if(staged.length===0)return;
+    const oversized=staged.filter(s=>s.file.size>20*1024*1024);
+    if(oversized.length){statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";statusEl.textContent=`${oversized.length} file(s) exceed 20MB. Remove them and try again: ${oversized.map(s=>s.file.name).join(", ")}`;return;}
+    saveBtn.disabled=true;saveBtn.style.opacity=".7";
+    let done=0,failed=[];
+    const total=staged.length;
+    const catCounts={};
+    for(const s of staged){
+      saveBtn.innerHTML=`<span class="btn-spinner"></span>Uploading ${done+1} of ${total}…`;
+      try{
+        const ext=s.file.name.split(".").pop();
+        const path=`documents/${clientId}/${fileId}/${Date.now()}_${done}.${ext}`;
+        const{error:upErr}=await sb.storage.from("portal-docs").upload(path,s.file,{cacheControl:"3600",upsert:false});
+        if(upErr){failed.push(s.file.name);continue;}
+        const{error:insErr}=await sb.from("documents").insert({client_id:clientId,file_id:fileId,name:s.name,url:"storage:"+path,category:s.category,date:new Date().toISOString().slice(0,10),uploaded_by:"admin"});
+        if(insErr){failed.push(s.file.name);continue;}
+        catCounts[s.category]=(catCounts[s.category]||0)+1;
+        done++;
+      }catch(err){failed.push(s.file.name);}
+    }
+    // One notification + one activity entry summarizing the batch (no spamming the client)
+    if(done>0){
+      const summary=Object.entries(catCounts).map(([c,n])=>`${n} ${c}`).join(", ");
+      await createNotification(clientId,fileId,`${done} new document${done===1?"":"s"} added to your portal (${summary}).`,"info");
+      await sb.from("activity_log").insert({file_id:fileId,admin_name:SESSION?.admin?.name||"Admin",action:`bulk-uploaded ${done} document${done===1?"":"s"}`,details:summary.slice(0,120)});
+    }
+    if(failed.length){
+      statusEl.style.display="block";statusEl.style.background="#FFFDE7";statusEl.style.color="#975A16";
+      statusEl.textContent=`Uploaded ${done} of ${total}. ${failed.length} failed: ${failed.join(", ")}`;
+      saveBtn.disabled=false;saveBtn.style.opacity="1";saveBtn.textContent="Retry remaining";
+      staged=staged.filter(s=>failed.includes(s.file.name));renderList();
+      return;
+    }
+    saveBtn.innerHTML="✓ All uploaded!";saveBtn.style.background="#38A169";saveBtn.style.borderColor="#38A169";
+    statusEl.style.display="block";statusEl.style.background="#F0FFF4";statusEl.style.color="#276749";
+    statusEl.textContent=`✓ ${done} document${done===1?"":"s"} uploaded and sorted.`;
+    setTimeout(()=>{overlay.remove();renderAdmin(clientId,fileId,"documents");},1200);
+  });
+}
+
 function showGlobalUploadDocModal(preClientId="",preFileId=""){
   const overlay=document.createElement("div");
   overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
@@ -3937,6 +4107,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <p style="font-weight:700;font-size:15px;color:var(--ink)">File Details</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="showGlobalUploadDocModal('${activeClientId}','${activeFileId}')">📎 Attach Document</button>
+          <button class="btn btn-ghost btn-sm" onclick="showBulkUploadModal('${activeClientId}','${activeFileId}')">📚 Bulk Upload</button>
           <button class="btn btn-teal btn-sm" id="add-property-btn">+ Add Property</button>
         </div>
       </div>
@@ -4159,10 +4330,13 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       </div>`;
     }
     mainContent=`<div class="admin-card">
-      <p style="font-weight:800;font-size:16px;color:var(--ink);margin-bottom:16px">Documents</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+        <p style="font-weight:800;font-size:16px;color:var(--ink)">Documents</p>
+        <button class="btn btn-teal btn-sm" onclick="showBulkUploadModal('${activeClientId}','${activeFileId}')">📚 Bulk Upload</button>
+      </div>
       <!-- Add document form -->
       <div style="background:var(--main-bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:18px">
-        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Upload Document for Client</p>
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Upload a single document</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
           <div class="input-group" style="margin-bottom:0"><label class="input-label">Document Name</label><input class="dark-input" id="doc-name" placeholder="e.g. Title Commitment"/></div>
           <div class="input-group" style="margin-bottom:0"><label class="input-label">Category</label>
