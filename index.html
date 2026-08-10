@@ -5080,7 +5080,12 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"reassigned the coordinator",details:`Now assigned to ${coordinator}`});
       }
       if(milestone!==prev.milestone){
-        await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"updated the milestone",details:`Stage: ${MILESTONES[milestone]||milestone}`});
+        const stageName=MILESTONES[milestone]||`Stage ${milestone}`;
+        // Client: in-portal notification only (bell lights up) — no email, to protect their inbox
+        await createNotification(activeClientId,activeFileId,`Your closing has advanced to: ${stageName} — ${address||"your property"}`,"update");
+        // Team: email so everyone knows a stage moved
+        await notifyAdmins(client.name,"🎯 Milestone Updated",`${client.name} advanced to "${stageName}" — ${address||"TBD"}`);
+        await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"updated the milestone",details:`Stage: ${stageName}`});
       }
     }
     btnLoad("save-file",false,"✓ Saved!","Save Changes");
