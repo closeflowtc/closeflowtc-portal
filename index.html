@@ -399,6 +399,48 @@ async function markInviteCodeUsed(id){
   if(!id)return;
   await sb.from("invite_codes").update({used:true}).eq("id",id);
 }
+
+// ── ONBOARDING DOCUMENT CHECKLIST ─────────────────────────────────────────────
+// The standard set of documents requested from every new client. Each becomes an
+// upload-task the client can fulfil with a document or mark Not Applicable.
+// tier "required" → Not Applicable asks for a quick reason; "optional" → free to skip.
+const ONBOARDING_DOC_TASKS=[
+  {text:"Professional photo (for your client portal profile)",tier:"required"},
+  {text:"Government-issued photo ID — primary owner",tier:"required"},
+  {text:"Government-issued photo ID — each authorized signer (plus the Authorized Signer Authorization Form for each)",tier:"required"},
+  {text:"Articles of Incorporation",tier:"required"},
+  {text:"Operating Agreement",tier:"required"},
+  {text:"State registration documents (for each state your entity is registered in)",tier:"required"},
+  {text:"Wire instructions (use the template we sent as your guide)",tier:"required"},
+  {text:"Certificate of Good Standing",tier:"required"},
+  {text:"IRS EIN Confirmation Letter (CP 575 or 147C) — if applicable",tier:"optional"},
+  {text:"Foreign Qualification documents — if applicable",tier:"optional"},
+  {text:"DBA or assumed name filing — if applicable",tier:"optional"},
+  {text:"Trust documents — if any property is held or transacted in trust",tier:"optional"},
+  {text:"Any additional business documents you'd like us to have on file — if applicable",tier:"optional"},
+];
+
+// Create the onboarding checklist for a client (idempotent: skips if already created).
+// Returns {created:N} or {skipped:true}. Each row is a requires_upload task tagged is_onboarding.
+async function createOnboardingTasks(clientId,fileId){
+  if(!clientId||!fileId)return{error:"missing client or file"};
+  // Guard against duplicates — look for any existing onboarding task for this client
+  const{data:existing}=await sb.from("tasks").select("id").eq("client_id",clientId).eq("is_onboarding",true).limit(1);
+  if(existing&&existing.length)return{skipped:true};
+  const rows=ONBOARDING_DOC_TASKS.map(item=>({
+    client_id:clientId,file_id:fileId,text:item.text,
+    status:"pending",done:false,requires_upload:true,
+    doc_url:"",doc_name:"",is_onboarding:true,doc_tier:item.tier,
+  }));
+  // Try the full insert; if the columns don't exist yet, fall back to a plain upload task set
+  let{error}=await sb.from("tasks").insert(rows);
+  if(error){
+    const basic=ONBOARDING_DOC_TASKS.map(item=>({client_id:clientId,file_id:fileId,text:item.text,status:"pending",done:false,requires_upload:true,doc_url:"",doc_name:""}));
+    ({error}=await sb.from("tasks").insert(basic));
+  }
+  if(error)return{error:error.message};
+  return{created:rows.length};
+}
 const MILESTONES=["Deal Initiation","Open Escrow Pending","Escrow Opened/EMD Pending","EMD Paid","Title Commitment","HUD/Alta","Clear to Close","Closed/Recorded"];
 const FILE_STATUSES=["Active","Pending","On Hold","Archived","Closed"];
 const STATUS={
@@ -1919,6 +1961,7 @@ function taskStatusBadge(status){
     uploaded:{bg:"#EBF8FF",text:"#2B6CB0",label:"Upload Received"},
     pending_review:{bg:"#FAF5FF",text:"#553C9A",label:"Pending TC Review"},
     complete:{bg:"#C6F6D5",text:"#276749",label:"Complete"},
+    not_applicable:{bg:"#EDF2F7",text:"#718096",label:"Not Applicable"},
   };
   const s=map[status]||map.pending;
   return`<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:${s.bg};color:${s.text};white-space:nowrap">${s.label}</span>`;
@@ -2290,6 +2333,8 @@ async function doRegister(){
   const{data:client,error}=await sb.from("clients").insert({name,email,password:pass,phone,address:"",photo_url:"",has_seen_welcome:false,onboarding_complete:false}).select().single();
   if(error){renderLogin("register","Something went wrong. Please try again.",values);return;}
   const{data:newFile}=await sb.from("files").insert({client_id:client.id,address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"}).select().single();
+  // Auto-load the onboarding document checklist for the new client
+  if(newFile?.id)await createOnboardingTasks(client.id,newFile.id);
   await sb.from("messages").insert({client_id:client.id,from_name:"CloseFlow TC",text:`Welcome, ${name}! Your account is ready. Your coordinator will be in touch shortly.`,date:new Date().toISOString().slice(0,10),is_admin:true});
   await markInviteCodeUsed(inviteResult.id);
   // Notify the admin team a new client registered
@@ -2581,8 +2626,8 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   else if(tab==="tasks"){
     const tl=tasks||[];
-    const activeTasks=tl.filter(t=>t.status!=="complete");
-    const doneTasks2=tl.filter(t=>t.status==="complete");
+    const activeTasks=tl.filter(t=>t.status!=="complete"&&t.status!=="not_applicable");
+    const doneTasks2=tl.filter(t=>t.status==="complete"||t.status==="not_applicable");
     content=`<div class="card card-pad">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <p style="font-weight:700;font-size:16px;color:var(--ink)">✅ My Tasks</p>
@@ -2593,9 +2638,24 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
         const isPendingReview=t.status==="pending_review";
         const hasDoc=t.doc_url&&t.doc_url.length>0;
         const needsUpload=t.requires_upload===true;
+        const isNA=t.status==="not_applicable";
 
         // ── TYPE 1: Task requires document upload ──
         if(needsUpload){
+          // N/A state — client marked this item not applicable
+          if(isNA){
+            return`<div class="task-item" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px 16px;opacity:.75">
+              <div style="display:flex;align-items:flex-start;gap:12px">
+                <div style="width:22px;height:22px;border-radius:7px;border:2px solid var(--border);background:var(--main-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;font-size:11px">—</div>
+                <div style="flex:1;min-width:0">
+                  <p style="font-size:14px;color:var(--muted);font-weight:600;margin-bottom:6px">${t.text}</p>
+                  <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EDF2F7;color:var(--muted)">Marked Not Applicable</span>
+                  ${t.na_reason?`<p style="font-size:11px;color:var(--muted);margin-top:6px;font-style:italic">Reason: ${t.na_reason}</p>`:""}
+                </div>
+                <button class="task-undo-na btn btn-ghost btn-sm" data-tid="${t.id}" style="font-size:11px;flex-shrink:0">Undo</button>
+              </div>
+            </div>`;
+          }
           return`<div class="task-item" style="flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px">
             <div style="display:flex;align-items:flex-start;gap:12px">
               <div style="width:22px;height:22px;border-radius:7px;border:2px solid #E9D8FD;background:${isPendingReview?"#E9D8FD":hasDoc?"var(--teal)":"transparent"};display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">
@@ -2628,8 +2688,11 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
                 <label class="input-label">Document Name</label>
                 <input class="finput task-doc-name" data-tid="${t.id}" placeholder="e.g. Operating Agreement, Wire Instructions" style="font-size:13px"/>
               </div>
-              <button class="btn btn-primary task-upload-btn" data-tid="${t.id}">📎 Submit Document</button>
-              <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Upload the document to Google Drive, then paste the share link above. Your coordinator will review it and you will be notified once it is approved.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-primary task-upload-btn" data-tid="${t.id}">📎 Submit Document</button>
+                <button class="btn btn-ghost task-na-btn" data-tid="${t.id}" data-tier="${t.doc_tier||"optional"}" style="font-size:12px">Not Applicable</button>
+              </div>
+              <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Upload the document to Google Drive, then paste the share link above. Or mark it Not Applicable if it doesn't apply to you. Your coordinator will review it and you will be notified once it is approved.</p>
             </div>`:""}
           </div>`;
         }
@@ -2647,13 +2710,23 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       }).join("")}
       ${doneTasks2.length>0?`
         <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Completed</p>
-          ${doneTasks2.map(t=>`<div class="task-item" style="opacity:.5;padding:10px 16px">
-            <div class="task-check done" style="flex-shrink:0"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
-            <p style="font-size:14px;color:var(--muted);text-decoration:line-through;flex:1">${t.text}</p>
-            ${t.doc_url?`<a href="${t.doc_url}" target="_blank" style="font-size:11px;color:var(--teal)">📎 ${t.doc_name||"Doc"}</a>`:""}
-            ${taskStatusBadge("complete")}
-          </div>`).join("")}
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Completed & Resolved</p>
+          ${doneTasks2.map(t=>{
+            if(t.status==="not_applicable"){
+              return`<div class="task-item" style="padding:10px 16px;opacity:.7">
+                <div style="width:22px;height:22px;border-radius:7px;border:2px solid var(--border);background:var(--main-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px">—</div>
+                <p style="font-size:14px;color:var(--muted);flex:1">${t.text}${t.na_reason?`<span style="font-style:italic"> — ${t.na_reason}</span>`:""}</p>
+                <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EDF2F7;color:var(--muted)">Not Applicable</span>
+                <button class="task-undo-na btn btn-ghost btn-sm" data-tid="${t.id}" style="font-size:11px">Undo</button>
+              </div>`;
+            }
+            return`<div class="task-item" style="opacity:.5;padding:10px 16px">
+              <div class="task-check done" style="flex-shrink:0"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
+              <p style="font-size:14px;color:var(--muted);text-decoration:line-through;flex:1">${t.text}</p>
+              ${t.doc_url?`<a href="${t.doc_url}" target="_blank" style="font-size:11px;color:var(--teal)">📎 ${t.doc_name||"Doc"}</a>`:""}
+              ${taskStatusBadge("complete")}
+            </div>`;
+          }).join("")}
         </div>`:""}
     </div>`;
   }
@@ -3145,6 +3218,38 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       }).eq("id",tid);
       await notifyAdmins(client.name,"📎 Task Document Uploaded",`Task document submitted for review. Document: "${name}" | Task: "${tasks?.find(t=>t.id===tid)?.text||""}"`);
       await createNotification(clientId,fileId,`Your document has been received and is pending review by your CloseFlow TC coordinator.`,"info");
+      await renderClient(clientId,fileId,"tasks");
+    });
+  });
+
+  // Mark an upload task Not Applicable — required-tier items ask for a quick reason
+  qsa(".task-na-btn").forEach(btn=>{
+    btn.addEventListener("click",async()=>{
+      if(roBlock())return;
+      const tid=btn.dataset.tid;
+      const tier=btn.dataset.tier||"optional";
+      let reason="";
+      if(tier==="required"){
+        reason=(window.prompt("This is usually required. Briefly, why doesn't it apply to you? (This helps your coordinator.)")||"").trim();
+        if(!reason)return; // required-tier N/A must have a reason
+      }
+      btn.disabled=true;btn.textContent="Saving…";
+      let{error}=await sb.from("tasks").update({status:"not_applicable",done:true,na_reason:reason}).eq("id",tid);
+      if(error){({error}=await sb.from("tasks").update({status:"not_applicable",done:true}).eq("id",tid));}
+      const taskText=tasks?.find(t=>t.id===tid)?.text||"";
+      await notifyAdmins(client.name,"➖ Item Marked Not Applicable",`"${taskText}"${reason?` — reason: ${reason}`:""}`);
+      await renderClient(clientId,fileId,"tasks");
+    });
+  });
+
+  // Undo a Not Applicable — put the task back to pending upload
+  qsa(".task-undo-na").forEach(btn=>{
+    btn.addEventListener("click",async()=>{
+      if(roBlock())return;
+      const tid=btn.dataset.tid;
+      btn.disabled=true;btn.textContent="…";
+      let{error}=await sb.from("tasks").update({status:"pending",done:false,na_reason:""}).eq("id",tid);
+      if(error){({error}=await sb.from("tasks").update({status:"pending",done:false}).eq("id",tid));}
       await renderClient(clientId,fileId,"tasks");
     });
   });
@@ -4160,14 +4265,16 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   else if(tab==="tasks"&&client){
     const tl=tasks||[];
     const pendingReview=tl.filter(t=>t.status==="pending_review");
-    const activeTasks2=tl.filter(t=>t.status!=="complete"&&t.status!=="pending_review");
-    const completeTasks2=tl.filter(t=>t.status==="complete");
+    const activeTasks2=tl.filter(t=>t.status!=="complete"&&t.status!=="pending_review"&&t.status!=="not_applicable");
+    const completeTasks2=tl.filter(t=>t.status==="complete"||t.status==="not_applicable");
+    const hasOnboarding=tl.some(t=>t.is_onboarding);
     mainContent=`<div class="admin-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
         <p style="font-weight:800;font-size:16px;color:var(--ink)">Client Tasks</p>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
           <span style="font-size:12px;color:var(--muted)">${tl.length} total · ${completeTasks2.length} complete</span>
           ${pendingReview.length>0?`<span style="background:#FAF5FF;color:#553C9A;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #E9D8FD">⏳ ${pendingReview.length} pending review</span>`:""}
+          ${hasOnboarding?`<span style="font-size:11px;color:var(--muted);font-weight:600">✓ Onboarding checklist loaded</span>`:`<button class="btn btn-teal btn-sm" id="load-onboarding" style="font-size:12px">📋 Load Onboarding Checklist</button>`}
         </div>
       </div>
       <!-- Add task form -->
@@ -5099,6 +5206,14 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     if(msg){msg.style.display="block";msg.style.color="#68D391";msg.textContent="✓ Password reset!";}
     if(qs("#new-pw"))qs("#new-pw").value="";
     btnLoad("reset-pw",false,"✓ Done","Reset");
+  });
+  on("#load-onboarding","click",async()=>{
+    btnLoad("load-onboarding",true,"Loading…");
+    const res=await createOnboardingTasks(activeClientId,activeFileId);
+    if(res.error){btnLoad("load-onboarding",false,null,"📋 Load Onboarding Checklist");alert(`Couldn't load checklist: ${res.error}`);return;}
+    if(client)await createNotification(activeClientId,activeFileId,`Your onboarding document checklist is ready in your Tasks. Please upload each item or mark it Not Applicable.`,"info");
+    await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"loaded the onboarding checklist",details:res.skipped?"already present":`${res.created} items`});
+    await renderAdmin(activeClientId,activeFileId,"tasks");
   });
   on("#add-task","click",async()=>{
     const text=qs("#task-input")?.value.trim();if(!text)return;
