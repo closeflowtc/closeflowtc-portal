@@ -4439,12 +4439,13 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <div style="flex:1;min-width:0">
           <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Currently Viewing${clientFiles&&clientFiles.length>1?" — switch property below":""}${(f.leg_side==="ab"||f.leg_side==="bc")?` &nbsp;·&nbsp; <span style="background:rgba(255,255,255,.25);padding:2px 8px;border-radius:20px">${f.leg_side==="ab"?"A/B SIDE · ACQUISITION":"B/C SIDE · DISPOSITION"}</span>`:""}</p>
           ${clientFiles&&clientFiles.length>1
-            ? `<select id="banner-file-select" style="width:100%;max-width:520px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:8px 12px;font-size:15px;font-weight:800;color:#fff;cursor:pointer;outline:none">${sortFilesGrouped(clientFiles).map(cf=>`<option value="${cf.id}" ${cf.id===activeFileId?"selected":""} style="color:#1C2B32">${cf.address||"Address pending"} — ${cf.status}${legTag(cf)}</option>`).join("")}</select>`
+            ? `<select id="banner-file-select" style="width:100%;max-width:520px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:8px 12px;font-size:15px;font-weight:800;color:#fff;cursor:pointer;outline:none">${propertyOptions(clientFiles,activeFileId,true).replace(/<option /g,'<option style="color:#1C2B32" ')}</select>`
             : `<p style="font-size:16px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.address||"Address pending"}</p>`
           }
         </div>
-        ${(clientFiles&&clientFiles.length>1)?`<span style="font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:5px 12px;border-radius:20px;flex-shrink:0">Property ${clientFiles.findIndex(x=>x.id===activeFileId)+1} of ${clientFiles.length}</span>`:""}
+        ${(clientFiles&&clientFiles.length>1)?`<span style="font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:5px 12px;border-radius:20px;flex-shrink:0">Property ${Math.max(1,uniqueProperties(clientFiles).findIndex(g=>g.legs.some(x=>x.id===activeFileId))+1)} of ${uniqueProperties(clientFiles).length}</span>`:""}
       </div>`:""}
+      ${activeFileId&&f?legToggleHtml(clientFiles,activeFileId):""}
       ${mainContent}
     </div>
   </div>
@@ -4882,6 +4883,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   qsa("[data-atab]").forEach(btn=>btn.addEventListener("click",()=>renderAdmin(activeClientId,activeFileId,btn.dataset.atab)));
   on("#admin-file-select","change",e=>renderAdmin(activeClientId,e.target.value,tab));
   on("#banner-file-select","change",e=>renderAdmin(activeClientId,e.target.value,tab));
+  qsa(".leg-toggle").forEach(btn=>btn.addEventListener("click",()=>{if(btn.dataset.fid!==activeFileId)renderAdmin(activeClientId,btn.dataset.fid,tab);}));
 
   // Add property
   on("#add-property-btn","click",()=>{const f2=qs("#add-prop-form");if(f2)f2.style.display="block";});
