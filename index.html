@@ -399,48 +399,6 @@ async function markInviteCodeUsed(id){
   if(!id)return;
   await sb.from("invite_codes").update({used:true}).eq("id",id);
 }
-
-// ── ONBOARDING DOCUMENT CHECKLIST ─────────────────────────────────────────────
-// The standard set of documents requested from every new client. Each becomes an
-// upload-task the client can fulfil with a document or mark Not Applicable.
-// tier "required" → Not Applicable asks for a quick reason; "optional" → free to skip.
-const ONBOARDING_DOC_TASKS=[
-  {text:"Professional photo (for your client portal profile)",tier:"required"},
-  {text:"Government-issued photo ID — primary owner",tier:"required"},
-  {text:"Government-issued photo ID — each authorized signer (plus the Authorized Signer Authorization Form for each)",tier:"required"},
-  {text:"Articles of Incorporation",tier:"required"},
-  {text:"Operating Agreement",tier:"required"},
-  {text:"State registration documents (for each state your entity is registered in)",tier:"required"},
-  {text:"Wire instructions (use the template we sent as your guide)",tier:"required"},
-  {text:"Certificate of Good Standing",tier:"required"},
-  {text:"IRS EIN Confirmation Letter (CP 575 or 147C) — if applicable",tier:"optional"},
-  {text:"Foreign Qualification documents — if applicable",tier:"optional"},
-  {text:"DBA or assumed name filing — if applicable",tier:"optional"},
-  {text:"Trust documents — if any property is held or transacted in trust",tier:"optional"},
-  {text:"Any additional business documents you'd like us to have on file — if applicable",tier:"optional"},
-];
-
-// Create the onboarding checklist for a client (idempotent: skips if already created).
-// Returns {created:N} or {skipped:true}. Each row is a requires_upload task tagged is_onboarding.
-async function createOnboardingTasks(clientId,fileId){
-  if(!clientId||!fileId)return{error:"missing client or file"};
-  // Guard against duplicates — look for any existing onboarding task for this client
-  const{data:existing}=await sb.from("tasks").select("id").eq("client_id",clientId).eq("is_onboarding",true).limit(1);
-  if(existing&&existing.length)return{skipped:true};
-  const rows=ONBOARDING_DOC_TASKS.map(item=>({
-    client_id:clientId,file_id:fileId,text:item.text,
-    status:"pending",done:false,requires_upload:true,
-    doc_url:"",doc_name:"",is_onboarding:true,doc_tier:item.tier,
-  }));
-  // Try the full insert; if the columns don't exist yet, fall back to a plain upload task set
-  let{error}=await sb.from("tasks").insert(rows);
-  if(error){
-    const basic=ONBOARDING_DOC_TASKS.map(item=>({client_id:clientId,file_id:fileId,text:item.text,status:"pending",done:false,requires_upload:true,doc_url:"",doc_name:""}));
-    ({error}=await sb.from("tasks").insert(basic));
-  }
-  if(error)return{error:error.message};
-  return{created:rows.length};
-}
 const MILESTONES=["Deal Initiation","Open Escrow Pending","Escrow Opened/EMD Pending","EMD Paid","Title Commitment","HUD/Alta","Clear to Close","Closed/Recorded"];
 const FILE_STATUSES=["Active","Pending","On Hold","Archived","Closed"];
 const STATUS={
@@ -491,14 +449,7 @@ const TOUR_STEPS=[
     tab:"documents",icon:"📁",
     title:"Your Documents",
     body:"All the important paperwork for your closing is stored here — contracts, title documents, closing statements, and more. Your CloseFlow TC coordinator uploads these for you as they become available. You can also upload documents here if your coordinator asks you to provide something.",
-    action:"Click the green 'Upload Document' button at the top to add a file. You can choose a file straight from your computer, phone, or tablet — or paste a Google Drive link if you prefer. If you are unsure, message your CloseFlow TC coordinator and they will walk you through it.",
-    video:null,
-  },
-  {
-    tab:"help",icon:"❔",
-    title:"Help Is Always Here",
-    body:"If you ever forget how something works, the Help tab has simple, step by step answers for everything in this portal — from uploading a document to reading your progress bar. You can search for a topic or just tap through the list. You never need to remember any of this tour.",
-    action:"Take a quick look at the Help tab. Try typing a word like 'documents' in the search box to see how it finds the right answer for you.",
+    action:"Click the green 'Upload Document' button at the top to upload a file. You will need a Google Drive link to your document. If you are unsure how to do this, message your CloseFlow TC coordinator and they will walk you through it.",
     video:null,
   },
   {
@@ -675,6 +626,40 @@ function sortFilesGrouped(arr){
     const rank=x=>x.leg_side==="ab"?0:x.leg_side==="bc"?1:2;
     return rank(a)-rank(b);
   });
+}
+// Option 2 layout: one dropdown entry per address, plus a Buy/Sell side toggle
+const LEG_SUFFIX_RE=/\s*[—-]\s*(A\/B|B\/C|Buy|Sell).*$/i;
+function legKey(f2){return String(f2.address||"").replace(LEG_SUFFIX_RE,"").replace(/\s+/g," ").trim().toLowerCase()||f2.id;}
+function cleanAddr(f2){return String(f2.address||"Address pending").replace(LEG_SUFFIX_RE,"").trim();}
+function uniqueProperties(arr){
+  const groups={},order=[];
+  sortFilesGrouped(arr).forEach(f2=>{const k=legKey(f2);if(!groups[k]){groups[k]=[];order.push(k);}groups[k].push(f2);});
+  return order.map(k=>{const legs=groups[k];const rep=legs.find(x=>x.leg_side==="ab")||legs[0];return{key:k,rep,legs,isDouble:legs.some(x=>x.leg_side==="ab"||x.leg_side==="bc")};});
+}
+function propertyOptions(arr,fileId,withStatus){
+  const cur=(arr||[]).find(x=>x.id===fileId);const curKey=cur?legKey(cur):null;
+  return uniqueProperties(arr).map(g=>{
+    const sel=g.key===curKey;
+    const suffix=g.isDouble?" · Double close":(withStatus?" — "+(g.rep.status||""):"");
+    return `<option value="${sel?fileId:g.rep.id}" ${sel?"selected":""}>${cleanAddr(g.rep)}${suffix}</option>`;
+  }).join("");
+}
+function legToggleHtml(arr,fileId){
+  const cur=(arr||[]).find(x=>x.id===fileId);if(!cur)return"";
+  const k=legKey(cur);
+  const legs=(arr||[]).filter(x=>legKey(x)===k&&(x.leg_side==="ab"||x.leg_side==="bc"));
+  if(legs.length===0)return"";
+  const ab=legs.find(x=>x.leg_side==="ab"),bc=legs.find(x=>x.leg_side==="bc");
+  const btn=(leg,label,sub,on,bg,fg)=>leg
+    ?`<button class="leg-toggle" data-fid="${leg.id}" style="flex:1;border:none;cursor:pointer;border-radius:9px;padding:10px 12px;text-align:center;font-family:inherit;background:${on?bg:"transparent"};color:${on?fg:"var(--muted)"}"><span style="display:block;font-size:14px;font-weight:800">${label}</span><span style="display:block;font-size:11px;font-weight:600;margin-top:2px">${sub} · ${leg.status||""}</span></button>`
+    :`<div style="flex:1;border-radius:9px;padding:10px 12px;text-align:center;color:var(--muted);opacity:.7"><span style="display:block;font-size:14px;font-weight:800">${label}</span><span style="display:block;font-size:11px;font-weight:600;margin-top:2px">Not started yet</span></div>`;
+  return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:14px;padding:10px 14px;margin-bottom:16px">
+    <div style="min-width:150px"><p style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Double close</p><p style="font-size:13px;font-weight:700;color:var(--ink)">Choose a side to view</p></div>
+    <div style="display:flex;gap:4px;background:var(--main-bg);border-radius:11px;padding:4px;flex:1;min-width:260px">
+      ${btn(ab,"A/B · Buy side","You buy",cur.leg_side==="ab","#E6F1FB","#0C447C")}
+      ${btn(bc,"B/C · Sell side","You sell",cur.leg_side==="bc","#FAEEDA","#854F0B")}
+    </div>
+  </div>`;
 }
 // Short leg label for dropdown options
 function legTag(f2){
@@ -1232,169 +1217,6 @@ function showGlobalAddTaskModal(){
 }
 
 // ── GLOBAL UPLOAD DOCUMENT MODAL ─────────────────────────────────────
-// ── AUTO-CATEGORIZE A DOCUMENT BY ITS FILENAME ───────────────────────────────
-// Closing-tuned category set. Anything that matches nothing falls through to General.
-function categorizeByFilename(filename){
-  const n=(filename||"").toLowerCase();
-  // Wire instructions — check first (most specific / highest stakes)
-  if(/\bwir(e|ing)\b|wire.?instruction|wire.?transfer|\bach\b|bank.?instruction/.test(n))return"Wire";
-  // HUD / closing statements / settlement
-  if(/\bhud\b|\balta\b|settlement|closing.?statement|closing.?disclosure|\bcd\b|disbursement|final.?figures/.test(n))return"HUD/Closing";
-  // Title docs
-  if(/title|commitment|\bt&e\b|title.?search|preliminary|prelim|policy|endorsement|schedule.?[ab]|legal.?description|vesting/.test(n))return"Title";
-  // Contracts / agreements
-  if(/contract|agreement|\bpsa\b|purchase|assignment|amendment|addend|earnest|\bemd\b|option|disclosure/.test(n))return"Contracts";
-  return"General";
-}
-const BULK_CATEGORIES=["Contracts","Title","HUD/Closing","Wire","General"];
-// Clean a filename into a friendly document name: strip extension, swap _/- for spaces, tidy.
-function prettyDocName(filename){
-  let base=(filename||"").replace(/\.[^.]+$/,"");
-  base=base.replace(/[_]+/g," ").replace(/\s{2,}/g," ").trim();
-  return base||filename||"Document";
-}
-
-// ── BULK UPLOAD MODAL ────────────────────────────────────────────────────────
-// Drop many files at once; each is auto-named from its filename and auto-sorted
-// into a closing category. No per-file typing required.
-function showBulkUploadModal(preClientId="",preFileId=""){
-  const overlay=document.createElement("div");
-  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
-  overlay.innerHTML=`<div style="background:var(--white);border-radius:20px;padding:30px;max-width:600px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .3s ease;max-height:90vh;display:flex;flex-direction:column">
-    <div style="margin-bottom:18px;flex-shrink:0">
-      <h3 style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:6px">📚 Bulk Upload Documents</h3>
-      <p style="font-size:13px;color:var(--muted)">Drop in as many files as you like. Each is named from its filename and sorted into a category automatically — no typing needed. You can tweak any category before uploading.</p>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1;min-height:0;padding-right:2px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Client <span style="color:var(--danger)">*</span></label>
-          <select id="bulk-client" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;background:#fff">
-            <option value="">Select a client...</option>
-            ${_allClients.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
-          </select>
-        </div>
-        <div>
-          <label style="display:block;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Deal / Property <span style="color:var(--danger)">*</span></label>
-          <select id="bulk-file" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;background:#fff">
-            <option value="">Select a client first...</option>
-          </select>
-        </div>
-      </div>
-      <!-- Drop zone -->
-      <label id="bulk-drop" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:28px;border:2px dashed var(--border);border-radius:12px;cursor:pointer;background:var(--main-bg);transition:all .2s" onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--border)'">
-        <span style="font-size:30px">📚</span>
-        <span style="font-size:13px;font-weight:600;color:var(--ink)">Click to choose files, or drag &amp; drop here</span>
-        <span style="font-size:11px;color:var(--muted)">PDF, Word, Excel, JPG, PNG — up to 20MB each</span>
-        <input id="bulk-file-input" type="file" multiple style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.txt"/>
-      </label>
-      <!-- Staged file list -->
-      <div id="bulk-list"></div>
-    </div>
-    <div id="bulk-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;flex-shrink:0"></div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-shrink:0">
-      <button id="cancel-bulk" class="btn btn-ghost">Cancel</button>
-      <button id="save-bulk" class="btn btn-primary" disabled style="opacity:.5">Upload 0 files</button>
-    </div>
-  </div>`;
-  document.body.appendChild(overlay);
-
-  let staged=[]; // {file, name, category}
-
-  const fileSel=overlay.querySelector("#bulk-file");
-  const clientSel=overlay.querySelector("#bulk-client");
-  const saveBtn=overlay.querySelector("#save-bulk");
-  const listEl=overlay.querySelector("#bulk-list");
-  const statusEl=overlay.querySelector("#bulk-status");
-
-  async function loadFilesFor(cid,selFileId=""){
-    if(!cid){fileSel.innerHTML=`<option value="">Select a client first...</option>`;return;}
-    const{data:files}=await sb.from("files").select("id,address").eq("client_id",cid).order("created_at");
-    fileSel.innerHTML=`<option value="">Select a deal...</option>`+(files||[]).map(f=>`<option value="${f.id}" ${f.id===selFileId?"selected":""}>${f.address||"Address pending"}</option>`).join("");
-  }
-  if(preClientId){clientSel.value=preClientId;loadFilesFor(preClientId,preFileId);}
-  clientSel.addEventListener("change",e=>loadFilesFor(e.target.value));
-
-  function renderList(){
-    saveBtn.textContent=`Upload ${staged.length} file${staged.length===1?"":"s"}`;
-    saveBtn.disabled=staged.length===0;
-    saveBtn.style.opacity=staged.length===0?".5":"1";
-    if(staged.length===0){listEl.innerHTML="";return;}
-    listEl.innerHTML=`<p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:4px 0 8px">${staged.length} file${staged.length===1?"":"s"} ready — categories auto-detected</p>`+
-      staged.map((s,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--white)">
-        <span style="font-size:16px;flex-shrink:0">📄</span>
-        <div style="flex:1;min-width:0">
-          <p style="font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</p>
-          <p style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.file.name} · ${(s.file.size/1024/1024).toFixed(1)}MB</p>
-        </div>
-        <select class="bulk-cat-sel" data-idx="${i}" style="flex-shrink:0;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;background:#fff;color:var(--teal-dark)">
-          ${BULK_CATEGORIES.map(c=>`<option value="${c}" ${c===s.category?"selected":""}>${c}</option>`).join("")}
-        </select>
-        <button class="bulk-remove" data-idx="${i}" style="flex-shrink:0;background:#FFF5F5;color:var(--danger);border:1px solid #FED7D7;border-radius:8px;padding:4px 10px;font-size:14px;cursor:pointer;line-height:1">×</button>
-      </div>`).join("");
-    listEl.querySelectorAll(".bulk-cat-sel").forEach(sel=>sel.addEventListener("change",e=>{staged[+e.target.dataset.idx].category=e.target.value;}));
-    listEl.querySelectorAll(".bulk-remove").forEach(btn=>btn.addEventListener("click",e=>{staged.splice(+e.target.dataset.idx,1);renderList();}));
-  }
-
-  function addFiles(fileList){
-    for(const file of fileList){
-      staged.push({file,name:prettyDocName(file.name),category:categorizeByFilename(file.name)});
-    }
-    renderList();
-  }
-
-  const fileInput=overlay.querySelector("#bulk-file-input");
-  fileInput.addEventListener("change",e=>{if(e.target.files?.length)addFiles(e.target.files);fileInput.value="";});
-  const drop=overlay.querySelector("#bulk-drop");
-  ["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor="var(--teal)";drop.style.background="var(--teal-mist)";}));
-  ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor="var(--border)";drop.style.background="var(--main-bg)";}));
-  drop.addEventListener("drop",e=>{if(e.dataTransfer?.files?.length)addFiles(e.dataTransfer.files);});
-
-  overlay.querySelector("#cancel-bulk").addEventListener("click",()=>overlay.remove());
-  saveBtn.addEventListener("click",async()=>{
-    const clientId=clientSel.value;
-    const fileId=fileSel.value;
-    if(!clientId||!fileId){statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";statusEl.textContent="Please select a client and a deal first.";return;}
-    if(staged.length===0)return;
-    const oversized=staged.filter(s=>s.file.size>20*1024*1024);
-    if(oversized.length){statusEl.style.display="block";statusEl.style.background="#FFF5F5";statusEl.style.color="var(--danger)";statusEl.textContent=`${oversized.length} file(s) exceed 20MB. Remove them and try again: ${oversized.map(s=>s.file.name).join(", ")}`;return;}
-    saveBtn.disabled=true;saveBtn.style.opacity=".7";
-    let done=0,failed=[];
-    const total=staged.length;
-    const catCounts={};
-    for(const s of staged){
-      saveBtn.innerHTML=`<span class="btn-spinner"></span>Uploading ${done+1} of ${total}…`;
-      try{
-        const ext=s.file.name.split(".").pop();
-        const path=`documents/${clientId}/${fileId}/${Date.now()}_${done}.${ext}`;
-        const{error:upErr}=await sb.storage.from("portal-docs").upload(path,s.file,{cacheControl:"3600",upsert:false});
-        if(upErr){failed.push(s.file.name);continue;}
-        const{error:insErr}=await sb.from("documents").insert({client_id:clientId,file_id:fileId,name:s.name,url:"storage:"+path,category:s.category,date:new Date().toISOString().slice(0,10),uploaded_by:"admin"});
-        if(insErr){failed.push(s.file.name);continue;}
-        catCounts[s.category]=(catCounts[s.category]||0)+1;
-        done++;
-      }catch(err){failed.push(s.file.name);}
-    }
-    // One notification + one activity entry summarizing the batch (no spamming the client)
-    if(done>0){
-      const summary=Object.entries(catCounts).map(([c,n])=>`${n} ${c}`).join(", ");
-      await createNotification(clientId,fileId,`${done} new document${done===1?"":"s"} added to your portal (${summary}).`,"info");
-      await sb.from("activity_log").insert({file_id:fileId,admin_name:SESSION?.admin?.name||"Admin",action:`bulk-uploaded ${done} document${done===1?"":"s"}`,details:summary.slice(0,120)});
-    }
-    if(failed.length){
-      statusEl.style.display="block";statusEl.style.background="#FFFDE7";statusEl.style.color="#975A16";
-      statusEl.textContent=`Uploaded ${done} of ${total}. ${failed.length} failed: ${failed.join(", ")}`;
-      saveBtn.disabled=false;saveBtn.style.opacity="1";saveBtn.textContent="Retry remaining";
-      staged=staged.filter(s=>failed.includes(s.file.name));renderList();
-      return;
-    }
-    saveBtn.innerHTML="✓ All uploaded!";saveBtn.style.background="#38A169";saveBtn.style.borderColor="#38A169";
-    statusEl.style.display="block";statusEl.style.background="#F0FFF4";statusEl.style.color="#276749";
-    statusEl.textContent=`✓ ${done} document${done===1?"":"s"} uploaded and sorted.`;
-    setTimeout(()=>{overlay.remove();renderAdmin(clientId,fileId,"documents");},1200);
-  });
-}
-
 function showGlobalUploadDocModal(preClientId="",preFileId=""){
   const overlay=document.createElement("div");
   overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px";
@@ -1961,7 +1783,6 @@ function taskStatusBadge(status){
     uploaded:{bg:"#EBF8FF",text:"#2B6CB0",label:"Upload Received"},
     pending_review:{bg:"#FAF5FF",text:"#553C9A",label:"Pending TC Review"},
     complete:{bg:"#C6F6D5",text:"#276749",label:"Complete"},
-    not_applicable:{bg:"#EDF2F7",text:"#718096",label:"Not Applicable"},
   };
   const s=map[status]||map.pending;
   return`<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:${s.bg};color:${s.text};white-space:nowrap">${s.label}</span>`;
@@ -2333,8 +2154,6 @@ async function doRegister(){
   const{data:client,error}=await sb.from("clients").insert({name,email,password:pass,phone,address:"",photo_url:"",has_seen_welcome:false,onboarding_complete:false}).select().single();
   if(error){renderLogin("register","Something went wrong. Please try again.",values);return;}
   const{data:newFile}=await sb.from("files").insert({client_id:client.id,address:"",status:"Pending",milestone:0,closing_date:"",coordinator:"Danielle McCarter"}).select().single();
-  // Auto-load the onboarding document checklist for the new client
-  if(newFile?.id)await createOnboardingTasks(client.id,newFile.id);
   await sb.from("messages").insert({client_id:client.id,from_name:"CloseFlow TC",text:`Welcome, ${name}! Your account is ready. Your coordinator will be in touch shortly.`,date:new Date().toISOString().slice(0,10),is_admin:true});
   await markInviteCodeUsed(inviteResult.id);
   // Notify the admin team a new client registered
@@ -2403,7 +2222,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     <div class="property-selector">
       <span style="font-size:14px">🏠</span>
       <select id="property-select" style="border:none;outline:none;background:transparent;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;flex:1">
-        ${sortFilesGrouped(files).map(f2=>`<option value="${f2.id}" ${f2.id===fileId?"selected":""}>${f2.address||"Property (address pending)"} — ${f2.status}${legTag(f2)}</option>`).join("")}
+        ${propertyOptions(files,fileId,true)}
       </select>
     </div>`:`<div style="font-size:13px;color:var(--muted);padding:6px 12px;background:var(--main-bg);border-radius:10px;border:1px solid var(--border)">No properties yet</div>`;
 
@@ -2626,8 +2445,8 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
 
   else if(tab==="tasks"){
     const tl=tasks||[];
-    const activeTasks=tl.filter(t=>t.status!=="complete"&&t.status!=="not_applicable");
-    const doneTasks2=tl.filter(t=>t.status==="complete"||t.status==="not_applicable");
+    const activeTasks=tl.filter(t=>t.status!=="complete");
+    const doneTasks2=tl.filter(t=>t.status==="complete");
     content=`<div class="card card-pad">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <p style="font-weight:700;font-size:16px;color:var(--ink)">✅ My Tasks</p>
@@ -2638,24 +2457,9 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
         const isPendingReview=t.status==="pending_review";
         const hasDoc=t.doc_url&&t.doc_url.length>0;
         const needsUpload=t.requires_upload===true;
-        const isNA=t.status==="not_applicable";
 
         // ── TYPE 1: Task requires document upload ──
         if(needsUpload){
-          // N/A state — client marked this item not applicable
-          if(isNA){
-            return`<div class="task-item" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px 16px;opacity:.75">
-              <div style="display:flex;align-items:flex-start;gap:12px">
-                <div style="width:22px;height:22px;border-radius:7px;border:2px solid var(--border);background:var(--main-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;font-size:11px">—</div>
-                <div style="flex:1;min-width:0">
-                  <p style="font-size:14px;color:var(--muted);font-weight:600;margin-bottom:6px">${t.text}</p>
-                  <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EDF2F7;color:var(--muted)">Marked Not Applicable</span>
-                  ${t.na_reason?`<p style="font-size:11px;color:var(--muted);margin-top:6px;font-style:italic">Reason: ${t.na_reason}</p>`:""}
-                </div>
-                <button class="task-undo-na btn btn-ghost btn-sm" data-tid="${t.id}" style="font-size:11px;flex-shrink:0">Undo</button>
-              </div>
-            </div>`;
-          }
           return`<div class="task-item" style="flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px">
             <div style="display:flex;align-items:flex-start;gap:12px">
               <div style="width:22px;height:22px;border-radius:7px;border:2px solid #E9D8FD;background:${isPendingReview?"#E9D8FD":hasDoc?"var(--teal)":"transparent"};display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">
@@ -2688,11 +2492,8 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
                 <label class="input-label">Document Name</label>
                 <input class="finput task-doc-name" data-tid="${t.id}" placeholder="e.g. Operating Agreement, Wire Instructions" style="font-size:13px"/>
               </div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="btn btn-primary task-upload-btn" data-tid="${t.id}">📎 Submit Document</button>
-                <button class="btn btn-ghost task-na-btn" data-tid="${t.id}" data-tier="${t.doc_tier||"optional"}" style="font-size:12px">Not Applicable</button>
-              </div>
-              <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Upload the document to Google Drive, then paste the share link above. Or mark it Not Applicable if it doesn't apply to you. Your coordinator will review it and you will be notified once it is approved.</p>
+              <button class="btn btn-primary task-upload-btn" data-tid="${t.id}">📎 Submit Document</button>
+              <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Upload the document to Google Drive, then paste the share link above. Your coordinator will review it and you will be notified once it is approved.</p>
             </div>`:""}
           </div>`;
         }
@@ -2710,23 +2511,13 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       }).join("")}
       ${doneTasks2.length>0?`
         <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Completed & Resolved</p>
-          ${doneTasks2.map(t=>{
-            if(t.status==="not_applicable"){
-              return`<div class="task-item" style="padding:10px 16px;opacity:.7">
-                <div style="width:22px;height:22px;border-radius:7px;border:2px solid var(--border);background:var(--main-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px">—</div>
-                <p style="font-size:14px;color:var(--muted);flex:1">${t.text}${t.na_reason?`<span style="font-style:italic"> — ${t.na_reason}</span>`:""}</p>
-                <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EDF2F7;color:var(--muted)">Not Applicable</span>
-                <button class="task-undo-na btn btn-ghost btn-sm" data-tid="${t.id}" style="font-size:11px">Undo</button>
-              </div>`;
-            }
-            return`<div class="task-item" style="opacity:.5;padding:10px 16px">
-              <div class="task-check done" style="flex-shrink:0"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
-              <p style="font-size:14px;color:var(--muted);text-decoration:line-through;flex:1">${t.text}</p>
-              ${t.doc_url?`<a href="${t.doc_url}" target="_blank" style="font-size:11px;color:var(--teal)">📎 ${t.doc_name||"Doc"}</a>`:""}
-              ${taskStatusBadge("complete")}
-            </div>`;
-          }).join("")}
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Completed</p>
+          ${doneTasks2.map(t=>`<div class="task-item" style="opacity:.5;padding:10px 16px">
+            <div class="task-check done" style="flex-shrink:0"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
+            <p style="font-size:14px;color:var(--muted);text-decoration:line-through;flex:1">${t.text}</p>
+            ${t.doc_url?`<a href="${t.doc_url}" target="_blank" style="font-size:11px;color:var(--teal)">📎 ${t.doc_name||"Doc"}</a>`:""}
+            ${taskStatusBadge("complete")}
+          </div>`).join("")}
         </div>`:""}
     </div>`;
   }
@@ -3030,7 +2821,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
         <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:5px 14px;flex:1;max-width:360px;margin:0 20px">
           <span style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600;flex-shrink:0">Property:</span>
           <select id="property-select" style="border:none;outline:none;background:transparent;font-size:13px;font-weight:700;color:#fff;cursor:pointer;flex:1;min-width:0">
-            ${sortFilesGrouped(files).map(f2=>`<option value="${f2.id}" ${f2.id===fileId?"selected":""}>${f2.address||"Address pending"}${legTag(f2)}</option>`).join("")}
+            ${propertyOptions(files,fileId,false)}
           </select>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
@@ -3043,7 +2834,7 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
           ${avatarElWithDropdown(client?.name||"",client?.photo_url||"",34,false)}
         </div>
       </div>
-      <div class="content fade-in">${content}</div>
+      <div class="content fade-in">${legToggleHtml(files,fileId)}${content}</div>
     </div>
   </div>`);
 
@@ -3166,6 +2957,12 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
     saveSession();
     await renderClient(clientId,e.target.value,tab);
   });
+  qsa(".leg-toggle").forEach(btn=>btn.addEventListener("click",async()=>{
+    if(btn.dataset.fid===fileId)return;
+    ACTIVE_FILE_ID=btn.dataset.fid;
+    saveSession();
+    await renderClient(clientId,btn.dataset.fid,tab);
+  }));
 
   // Donut chart
   if(tab==="overview"){
@@ -3218,38 +3015,6 @@ async function renderClient(clientId,fileId,tab="overview",isFirstLoad=false,isT
       }).eq("id",tid);
       await notifyAdmins(client.name,"📎 Task Document Uploaded",`Task document submitted for review. Document: "${name}" | Task: "${tasks?.find(t=>t.id===tid)?.text||""}"`);
       await createNotification(clientId,fileId,`Your document has been received and is pending review by your CloseFlow TC coordinator.`,"info");
-      await renderClient(clientId,fileId,"tasks");
-    });
-  });
-
-  // Mark an upload task Not Applicable — required-tier items ask for a quick reason
-  qsa(".task-na-btn").forEach(btn=>{
-    btn.addEventListener("click",async()=>{
-      if(roBlock())return;
-      const tid=btn.dataset.tid;
-      const tier=btn.dataset.tier||"optional";
-      let reason="";
-      if(tier==="required"){
-        reason=(window.prompt("This is usually required. Briefly, why doesn't it apply to you? (This helps your coordinator.)")||"").trim();
-        if(!reason)return; // required-tier N/A must have a reason
-      }
-      btn.disabled=true;btn.textContent="Saving…";
-      let{error}=await sb.from("tasks").update({status:"not_applicable",done:true,na_reason:reason}).eq("id",tid);
-      if(error){({error}=await sb.from("tasks").update({status:"not_applicable",done:true}).eq("id",tid));}
-      const taskText=tasks?.find(t=>t.id===tid)?.text||"";
-      await notifyAdmins(client.name,"➖ Item Marked Not Applicable",`"${taskText}"${reason?` — reason: ${reason}`:""}`);
-      await renderClient(clientId,fileId,"tasks");
-    });
-  });
-
-  // Undo a Not Applicable — put the task back to pending upload
-  qsa(".task-undo-na").forEach(btn=>{
-    btn.addEventListener("click",async()=>{
-      if(roBlock())return;
-      const tid=btn.dataset.tid;
-      btn.disabled=true;btn.textContent="…";
-      let{error}=await sb.from("tasks").update({status:"pending",done:false,na_reason:""}).eq("id",tid);
-      if(error){({error}=await sb.from("tasks").update({status:"pending",done:false}).eq("id",tid));}
       await renderClient(clientId,fileId,"tasks");
     });
   });
@@ -4212,7 +3977,6 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         <p style="font-weight:700;font-size:15px;color:var(--ink)">File Details</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="showGlobalUploadDocModal('${activeClientId}','${activeFileId}')">📎 Attach Document</button>
-          <button class="btn btn-ghost btn-sm" onclick="showBulkUploadModal('${activeClientId}','${activeFileId}')">📚 Bulk Upload</button>
           <button class="btn btn-teal btn-sm" id="add-property-btn">+ Add Property</button>
         </div>
       </div>
@@ -4265,16 +4029,14 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
   else if(tab==="tasks"&&client){
     const tl=tasks||[];
     const pendingReview=tl.filter(t=>t.status==="pending_review");
-    const activeTasks2=tl.filter(t=>t.status!=="complete"&&t.status!=="pending_review"&&t.status!=="not_applicable");
-    const completeTasks2=tl.filter(t=>t.status==="complete"||t.status==="not_applicable");
-    const hasOnboarding=tl.some(t=>t.is_onboarding);
+    const activeTasks2=tl.filter(t=>t.status!=="complete"&&t.status!=="pending_review");
+    const completeTasks2=tl.filter(t=>t.status==="complete");
     mainContent=`<div class="admin-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
         <p style="font-weight:800;font-size:16px;color:var(--ink)">Client Tasks</p>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px">
           <span style="font-size:12px;color:var(--muted)">${tl.length} total · ${completeTasks2.length} complete</span>
           ${pendingReview.length>0?`<span style="background:#FAF5FF;color:#553C9A;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #E9D8FD">⏳ ${pendingReview.length} pending review</span>`:""}
-          ${hasOnboarding?`<span style="font-size:11px;color:var(--muted);font-weight:600">✓ Onboarding checklist loaded</span>`:`<button class="btn btn-teal btn-sm" id="load-onboarding" style="font-size:12px">📋 Load Onboarding Checklist</button>`}
         </div>
       </div>
       <!-- Add task form -->
@@ -4437,13 +4199,10 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
       </div>`;
     }
     mainContent=`<div class="admin-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-        <p style="font-weight:800;font-size:16px;color:var(--ink)">Documents</p>
-        <button class="btn btn-teal btn-sm" onclick="showBulkUploadModal('${activeClientId}','${activeFileId}')">📚 Bulk Upload</button>
-      </div>
+      <p style="font-weight:800;font-size:16px;color:var(--ink);margin-bottom:16px">Documents</p>
       <!-- Add document form -->
       <div style="background:var(--main-bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:18px">
-        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Upload a single document</p>
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Upload Document for Client</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
           <div class="input-group" style="margin-bottom:0"><label class="input-label">Document Name</label><input class="dark-input" id="doc-name" placeholder="e.g. Title Commitment"/></div>
           <div class="input-group" style="margin-bottom:0"><label class="input-label">Category</label>
@@ -5187,12 +4946,7 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
         await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"reassigned the coordinator",details:`Now assigned to ${coordinator}`});
       }
       if(milestone!==prev.milestone){
-        const stageName=MILESTONES[milestone]||`Stage ${milestone}`;
-        // Client: in-portal notification only (bell lights up) — no email, to protect their inbox
-        await createNotification(activeClientId,activeFileId,`Your closing has advanced to: ${stageName} — ${address||"your property"}`,"update");
-        // Team: email so everyone knows a stage moved
-        await notifyAdmins(client.name,"🎯 Milestone Updated",`${client.name} advanced to "${stageName}" — ${address||"TBD"}`);
-        await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"updated the milestone",details:`Stage: ${stageName}`});
+        await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"updated the milestone",details:`Stage: ${MILESTONES[milestone]||milestone}`});
       }
     }
     btnLoad("save-file",false,"✓ Saved!","Save Changes");
@@ -5206,14 +4960,6 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     if(msg){msg.style.display="block";msg.style.color="#68D391";msg.textContent="✓ Password reset!";}
     if(qs("#new-pw"))qs("#new-pw").value="";
     btnLoad("reset-pw",false,"✓ Done","Reset");
-  });
-  on("#load-onboarding","click",async()=>{
-    btnLoad("load-onboarding",true,"Loading…");
-    const res=await createOnboardingTasks(activeClientId,activeFileId);
-    if(res.error){btnLoad("load-onboarding",false,null,"📋 Load Onboarding Checklist");alert(`Couldn't load checklist: ${res.error}`);return;}
-    if(client)await createNotification(activeClientId,activeFileId,`Your onboarding document checklist is ready in your Tasks. Please upload each item or mark it Not Applicable.`,"info");
-    await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"loaded the onboarding checklist",details:res.skipped?"already present":`${res.created} items`});
-    await renderAdmin(activeClientId,activeFileId,"tasks");
   });
   on("#add-task","click",async()=>{
     const text=qs("#task-input")?.value.trim();if(!text)return;
