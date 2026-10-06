@@ -4228,14 +4228,15 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     mainContent=`
     <!-- Onboarding Data Card -->
     <div class="admin-card" style="margin-bottom:16px;border-left:4px solid ${obComplete?"var(--success)":"var(--warning)"}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${obComplete?"16px":"0"}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${obComplete?"16px":"0"};gap:12px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
           <span style="font-size:20px">${obComplete?"✅":"⏳"}</span>
           <div>
             <p style="font-weight:700;font-size:14px;color:var(--ink)">Onboarding ${obComplete?"Complete":"Pending"}</p>
-            <p style="font-size:12px;color:var(--muted)">${obComplete?"Client has completed the setup form.":"Client has not completed the onboarding form yet."}</p>
+            <p style="font-size:12px;color:var(--muted)">${obComplete?(client.onboarded_manually?"Marked complete by your team.":"Client has completed the setup form."):"Client has not completed the onboarding form yet. If you've set this client up manually, you can mark it complete."}</p>
           </div>
         </div>
+        ${obComplete?`<button class="btn btn-ghost btn-sm" id="mark-ob-pending" style="font-size:11px">Mark as pending</button>`:`<button class="btn btn-teal btn-sm" id="mark-ob-complete" style="font-size:12px;flex-shrink:0">✓ Mark Onboarding Complete</button>`}
       </div>
       ${obComplete?`
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -5186,6 +5187,18 @@ async function renderAdmin(selClientId=null,selFileId=null,tab="overview"){
     setTimeout(()=>renderAdmin(activeClientId,newFile?.id,"client"),800);
   });
 
+  on("#mark-ob-complete","click",async()=>{
+    btnLoad("mark-ob-complete",true,"Saving…");
+    let{error}=await sb.from("clients").update({onboarding_complete:true,onboarded_manually:true}).eq("id",activeClientId);
+    if(error){({error}=await sb.from("clients").update({onboarding_complete:true}).eq("id",activeClientId));}
+    await sb.from("activity_log").insert({file_id:activeFileId,admin_name:currentAdmin?.name||"Admin",action:"marked onboarding complete (manual)",details:""});
+    await renderAdmin(activeClientId,activeFileId,"client");
+  });
+  on("#mark-ob-pending","click",async()=>{
+    let{error}=await sb.from("clients").update({onboarding_complete:false,onboarded_manually:false}).eq("id",activeClientId);
+    if(error){({error}=await sb.from("clients").update({onboarding_complete:false}).eq("id",activeClientId));}
+    await renderAdmin(activeClientId,activeFileId,"client");
+  });
   on("#save-file","click",async()=>{
     btnLoad("save-file",true,"Saving…");
     const address=qs("#f-address")?.value||"";
